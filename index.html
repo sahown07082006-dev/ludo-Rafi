@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Ludo Royale - Elite Championship Edition</title>
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- PWA Manifest & Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#050508">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+
+<div id="app">
+  <!-- SCREEN 0: PREMIUM SPLASH HOME -->
+  <div class="screen" id="splash-screen">
+    <div class="splash-top-space"></div>
+
+    <div class="splash-hero">
+      <div class="splash-emblem-wrap" onclick="previewEmblem()">
+        <svg class="splash-emblem" viewBox="0 0 120 120">
+          <polygon points="0,0 60,60 0,120" fill="url(#grad-red)" />
+          <polygon points="0,0 120,0 60,60" fill="url(#grad-green)" />
+          <polygon points="120,0 120,120 60,60" fill="url(#grad-yellow)" />
+          <polygon points="0,120 120,120 60,60" fill="url(#grad-blue)" />
+          <circle cx="60" cy="60" r="11" fill="#050508" />
+          <circle cx="60" cy="60" r="7" fill="#facc15" />
+        </svg>
+      </div>
+
+      <div class="splash-brand">
+        <div class="brand-logo splash-logo">LUDO ROYALE</div>
+        <div class="splash-tagline">Elite Championship Pass</div>
+        <div class="splash-stats-line" id="splash-stats-line"></div>
+      </div>
+    </div>
+
+    <div class="splash-actions">
+      <button class="action-btn splash-play-btn" id="primary-cta-btn" onclick="goToLobby()">PLAY</button>
+      <span class="rules-link splash-secondary-link hidden" id="secondary-cta-link">Custom Setup</span>
+      <span class="rules-link splash-rules-link" onclick="toggleRulesModal(false)">How to Play</span>
+    </div>
+
+    <div class="splash-footer">
+      <div class="utility-row">
+        <label class="icon-toggle" title="Sound">
+          <input type="checkbox" id="sound-toggle" checked onchange="previewSoundToggle()">
+          <span class="icon-on">🔊</span>
+          <span class="icon-off">🔇</span>
+        </label>
+        <label class="icon-toggle" title="Vibration">
+          <input type="checkbox" id="vibe-toggle" checked onchange="previewVibeToggle()">
+          <span class="icon-on">📳</span>
+          <span class="icon-off">🔕</span>
+        </label>
+        <button class="icon-toggle" title="Theme" onclick="toggleTheme()"><span id="theme-toggle-icon">🌙</span></button>
+        <button class="icon-toggle" title="Fullscreen" onclick="toggleFullscreen()"><span id="fullscreen-icon">⛶</span></button>
+      </div>
+      <div class="splash-version">v1.0</div>
+    </div>
+  </div>
+
+  <!-- SCREEN 1: MATCH SETUP / LOBBY -->
+  <div class="screen hidden" id="home-screen">
+    <div class="brand-section">
+      <div class="brand-logo">LUDO ROYALE</div>
+      <div class="brand-tag">Elite Championship Pass</div>
+    </div>
+
+    <div class="menu-card">
+      <div class="option-title">Match Configuration</div>
+      
+      <!-- Team Match Selector -->
+      <div class="setup-row" style="margin-bottom: 14px;">
+        <div class="player-label">
+          <span>🎮 Match Mode</span>
+        </div>
+        <div class="role-selector" id="mode-selector">
+          <button id="btn-mode-solo" class="role-btn selected active-yellow" onclick="setGameMode('solo')">SOLO MATCH</button>
+          <button id="btn-mode-team" class="role-btn" onclick="setGameMode('team')">TEAM MATCH (2v2)</button>
+        </div>
+        <div style="height: 8px;"></div>
+        <button class="action-btn" id="mp-connect-btn" style="background: linear-gradient(135deg, #00e676 0%, #008037 100%); color:#fff; padding: 10px; font-size: 0.8rem;" onclick="mpConnect()">📡 HOTSPOT MULTIPLAYER-এ কানেক্ট করো</button>
+        <div id="mp-status-text" style="text-align:center; color: var(--text-dim); font-size: 0.72rem; margin-top: 6px;"></div>
+      </div>
+
+      <div class="option-title">Configure Players</div>
+      <div class="player-setup-list">
+        <!-- Red Player -->
+        <div class="setup-row">
+          <div class="player-label">
+            <span class="color-dot red"></span>
+            <span>Red</span>
+          </div>
+          <div class="role-selector" id="select-red">
+            <button class="role-btn selected active-red" onclick="setPlayerType('red', 'human')">HUMAN</button>
+            <button class="role-btn" onclick="setPlayerType('red', 'bot')">BOT</button>
+            <button class="role-btn" onclick="setPlayerType('red', 'off')">OFF</button>
+          </div>
+        </div>
+
+        <!-- Green Player -->
+        <div class="setup-row">
+          <div class="player-label">
+            <span class="color-dot green"></span>
+            <span>Green</span>
+          </div>
+          <div class="role-selector" id="select-green">
+            <button class="role-btn selected active-green" onclick="setPlayerType('green', 'human')">HUMAN</button>
+            <button class="role-btn" onclick="setPlayerType('green', 'bot')">BOT</button>
+            <button class="role-btn" onclick="setPlayerType('green', 'off')">OFF</button>
+          </div>
+        </div>
+
+        <!-- Yellow Player -->
+        <div class="setup-row">
+          <div class="player-label">
+            <span class="color-dot yellow"></span>
+            <span>Yellow</span>
+          </div>
+          <div class="role-selector" id="select-yellow">
+            <button class="role-btn selected active-yellow" onclick="setPlayerType('yellow', 'human')">HUMAN</button>
+            <button class="role-btn" onclick="setPlayerType('yellow', 'bot')">BOT</button>
+            <button class="role-btn" onclick="setPlayerType('yellow', 'off')">OFF</button>
+          </div>
+        </div>
+
+        <!-- Blue Player -->
+        <div class="setup-row">
+          <div class="player-label">
+            <span class="color-dot blue"></span>
+            <span>Blue</span>
+          </div>
+          <div class="role-selector" id="select-blue">
+            <button class="role-btn" onclick="setPlayerType('blue', 'human')">HUMAN</button>
+            <button class="role-btn active-blue" onclick="setPlayerType('blue', 'bot')">BOT</button>
+            <button class="role-btn selected" onclick="setPlayerType('blue', 'off')">OFF</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="action-btn" id="start-btn" onclick="startLobbyGame()">START MATCH</button>
+    </div>
+
+    <div class="brand-section">
+      <span class="rules-link" onclick="toggleRulesModal(false)">How to Play Rules & powers</span>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: MAIN GAMEPLAY INTERFACE -->
+  <div class="screen hidden" id="game-screen">
+    <header>
+      <div class="logo">LUDO ROYALE</div>
+      <div class="game-team-badge" id="team-status-indicator"></div>
+      <button class="quit-btn" onclick="openResetModal()">QUIT MATCH</button>
+    </header>
+
+    <div class="board-container">
+      
+      <!-- Red Floating Dice -->
+      <div class="floating-dice red" id="dice-red" onclick="onDiceTriggered('red')">
+        <div class="cube" id="cube-red">
+          <div class="face f-1"><div></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div></div></div>
+          <div class="face f-2"><div class="dot"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-3"><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-4"><div class="dot"></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-5"><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-6"><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div></div>
+        </div>
+      </div>
+
+      <!-- Green Floating Dice -->
+      <div class="floating-dice green" id="dice-green" onclick="onDiceTriggered('green')">
+        <div class="cube" id="cube-green">
+          <div class="face f-1"><div></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div></div></div>
+          <div class="face f-2"><div class="dot"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-3"><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-4"><div class="dot"></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-5"><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-6"><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div></div>
+        </div>
+      </div>
+
+      <!-- Main Ludo Board Wrapper -->
+      <div class="board-wrapper">
+        <div class="ludo-board" id="board-grid"></div>
+        
+        <!-- Yards -->
+        <div class="yard red" id="yard-red">
+          <div class="yard-inner">
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+          </div>
+        </div>
+        
+        <div class="yard green" id="yard-green">
+          <div class="yard-inner">
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+          </div>
+        </div>
+        
+        <div class="yard yellow" id="yard-yellow">
+          <div class="yard-inner">
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+          </div>
+        </div>
+        
+        <div class="yard blue" id="yard-blue">
+          <div class="yard-inner">
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+            <div class="yard-spot"></div><div class="yard-spot"></div>
+          </div>
+        </div>
+
+        <!-- Center Goal Area -->
+        <div class="center-goal">
+          <svg viewBox="0 0 120 120">
+            <polygon points="0,0 60,60 0,120" fill="url(#grad-red)" />
+            <polygon points="0,0 120,0 60,60" fill="url(#grad-green)" />
+            <polygon points="120,0 120,120 60,60" fill="url(#grad-yellow)" />
+            <polygon points="0,120 120,120 60,60" fill="url(#grad-blue)" />
+            <polygon points="0,0 120,120" stroke="rgba(0,0,0,0.12)" stroke-width="1.5" />
+            <polygon points="120,0 0,120" stroke="rgba(0,0,0,0.12)" stroke-width="1.5" />
+            <circle cx="60" cy="60" r="10" fill="#ffffff" style="filter: drop-shadow(0 0 4px rgba(0,0,0,0.12));" />
+          </svg>
+        </div>
+
+        <div id="tokens-layer"></div>
+      </div>
+
+      <!-- Blue Floating Dice -->
+      <div class="floating-dice blue" id="dice-blue" onclick="onDiceTriggered('blue')">
+        <div class="cube" id="cube-blue">
+          <div class="face f-1"><div></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div></div></div>
+          <div class="face f-2"><div class="dot"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-3"><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-4"><div class="dot"></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-5"><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-6"><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div></div>
+        </div>
+      </div>
+
+      <!-- Yellow Floating Dice -->
+      <div class="floating-dice yellow" id="dice-yellow" onclick="onDiceTriggered('yellow')">
+        <div class="cube" id="cube-yellow">
+          <div class="face f-1"><div></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div></div></div>
+          <div class="face f-2"><div class="dot"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-3"><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div></div>
+          <div class="face f-4"><div class="dot"></div><div></div><div class="dot"></div><div></div><div></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-5"><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div><div></div><div class="dot"></div></div>
+          <div class="face f-6"><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div><div class="dot"></div><div></div><div class="dot"></div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- COSMIC POWER ACTIONS HUB -->
+    <div id="power-hub" class="power-hub hidden">
+      <div class="hub-header">
+        <span class="hub-title">⚡ COSMIC POWERS (<span id="power-charge-count">0</span>)</span>
+        <span class="hub-subtitle">Use 1 power charge to activate</span>
+      </div>
+      <div class="power-actions">
+        <button id="btn-power-six" class="power-btn" onclick="activatePower('force_six')">
+          <span class="power-icon">🎲</span>
+          <span class="power-name">Force Six (৬)</span>
+        </button>
+        <button id="btn-power-leap" class="power-btn" onclick="activatePower('swift_leap')">
+          <span class="power-icon">🏃</span>
+          <span class="power-name">Leap (+6)</span>
+        </button>
+        <button id="btn-power-aegis" class="power-btn" onclick="activatePower('aegis_teleport')">
+          <span class="power-icon">🛡️</span>
+          <span class="power-name">Aegis Safe</span>
+        </button>
+      </div>
+    </div>
+
+    <div style="height: 10px;"></div>
+  </div>
+
+  <!-- Rules Modal -->
+  <div class="modal-overlay hidden" id="rules-modal">
+    <div class="modal-content">
+      <h2>How to Play</h2>
+      <p style="margin-bottom: 12px;">Premium Offline Ludo rules</p>
+      <div class="rules-content">
+        <p>✦ <strong>Starting:</strong> Players need to roll a 6 to release a token from the yard into the common starting grid cell.</p>
+        <p>✦ <strong>Extra Rolls:</strong> Getting a 6, capturing an opponent's token, or reaching the center goal grants an extra turn.</p>
+        <p>✦ <strong>Safe Zones:</strong> Cells containing gold stars and player starting cells are safe. Token captures cannot occur here.</p>
+        <p>✦ <strong>⚡ Cosmic Powers (Capture Bonus):</strong> Every 4 pawn captures grants you 1 Power Charge. You can stack charges and use them anytime to:
+          <br>• <strong>Force Six:</strong> Get a 6 on your next roll.
+          <br>• <strong>Leap (+6):</strong> Instantly advance an active pawn 6 spaces forward.
+          <br>• <strong>Aegis Safe:</strong> Teleport an active pawn directly to the next upcoming Safe Zone.
+        </p>
+        <p>✦ <strong>👥 2v2 Team Play:</strong> Red & Yellow (Team Alpha) vs. Green & Blue (Team Beta). Partners bypass each other's home spaces without capturing, and can overlap freely. When one partner finishes, they can help roll and move their teammate's pawns!</p>
+      </div>
+      <button class="action-btn" onclick="toggleRulesModal(true)">UNDERSTOOD</button>
+    </div>
+  </div>
+
+  <!-- Victory Podium Overlay -->
+  <div class="modal-overlay hidden" id="podium-modal">
+    <div class="modal-content">
+      <h2>Victory Podium</h2>
+      <p>Match Completed!</p>
+      <div class="podium-list" id="podium-list"></div>
+      <button class="action-btn" style="background: linear-gradient(135deg, #00e676 0%, #008037 100%); color: #fff;" onclick="restartGame()">PLAY AGAIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vector gradients for goal quadrants -->
+<svg style="width:0; height:0; position:absolute;">
+  <defs>
+    <radialGradient id="grad-red" cx="20%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#ff557f" />
+      <stop offset="100%" stop-color="#b3002d" />
+    </radialGradient>
+    <radialGradient id="grad-green" cx="50%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#52ff9a" />
+      <stop offset="100%" stop-color="#008037" />
+    </radialGradient>
+    <radialGradient id="grad-yellow" cx="80%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#fff066" />
+      <stop offset="100%" stop-color="#b38f00" />
+    </radialGradient>
+    <radialGradient id="grad-blue" cx="50%" cy="80%" r="80%">
+      <stop offset="0%" stop-color="#66d1ff" />
+      <stop offset="100%" stop-color="#0066b3" />
+    </radialGradient>
+  </defs>
+</svg>
+
+<script src="script.js"></script>
+</body>
+</html>

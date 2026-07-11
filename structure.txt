@@ -1,0 +1,10 @@
+.
+├── index.html
+├── package-lock.json
+├── package.json
+├── script.js
+├── server.js
+├── structure.txt
+└── style.css
+
+1 directory, 7 files
