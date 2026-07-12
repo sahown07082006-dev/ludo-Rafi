@@ -1,0 +1,21 @@
+Privacy Policy for Ludo Royale
+
+Effective Date: July 12, 2026
+
+1. Information We Collect
+Ludo Royale is built as a simple web-based board game. We do not collect, store, or share any personal identifiable information (PII) from our users, such as names, email addresses, or phone numbers.
+
+2. Device and Offline Usage
+This application can be installed as a Progressive Web App (PWA) on your device. It utilizes local browser caching (Service Workers) solely to allow the game to be played offline. No personal data from your device is accessed or transmitted.
+
+3. Third-Party Services
+We host our application files using reliable third-party hosting platforms (such as GitHub Pages or Render). These hosting services may collect standard server logs (like IP addresses), which are handled according to their respective privacy policies. We do not use any third-party ad networks or analytics tools that track your personal data.
+
+4. Children's Privacy
+Our game is safe for everyone, including children. Since we do not collect any personal data, we comply with standard privacy regulations regarding children's safety online.
+
+5. Changes to This Privacy Policy
+We may update our Privacy Policy from time to time. Any changes will be posted on this page with an updated effective date.
+
+Contact Us
+If you have any questions about this Privacy Policy, you can contact the developer through our official platform or repository.
