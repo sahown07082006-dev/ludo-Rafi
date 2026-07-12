@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ludo-royale-game.onrender.com/sitemap.xml
