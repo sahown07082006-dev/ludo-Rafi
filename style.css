@@ -35,11 +35,12 @@ body {
   align-items: center;
   min-height: 100vh;
   overflow: hidden;
+  transition: background-color 0.3s ease;
 }
 
 #app {
   width: 100%;
-  max-width: 480px; /* অ্যাপের সর্বোচ্চ প্রস্থ ৪২০px থেকে বাড়িয়ে ৪৮০px করা হলো, যা বোর্ডকে বড় দেখাবে */
+  max-width: 480px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -53,36 +54,90 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  align-items: center;
   transition: opacity 0.3s ease, transform 0.3s ease;
+  position: relative;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom Premium Narrow Scrollbar */
+.screen::-webkit-scrollbar {
+  width: 4px;
+}
+.screen::-webkit-scrollbar-track {
+  background: transparent;
+}
+.screen::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* Settings Gear Button on Splash Screen */
+.settings-trigger-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  z-index: 101;
+}
+
+.settings-trigger-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: rotate(45deg);
+}
+
+.settings-trigger-btn:active {
+  transform: scale(0.92) rotate(45deg);
+}
+
+body.light-theme .settings-trigger-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .settings-trigger-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 /* ----------------------------------
  * LOBBY CONFIGURATION MENU
  * ---------------------------------- */
 #home-screen {
-  justify-content: center;
-  gap: 16px;
-  padding: 10px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 16px 8px 32px;
 }
 
 .brand-section {
   text-align: center;
+  margin-bottom: 4px;
 }
 
 .brand-logo {
-  font-size: 2.2rem;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 2px;
   text-shadow: 0 0 25px rgba(250, 204, 21, 0.2);
   background: linear-gradient(135deg, #ffffff 30%, #facc15 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .brand-tag {
-  font-size: 0.75rem;
+  font-size: clamp(0.65rem, 2vw, 0.75rem);
   color: #facc15;
   text-transform: uppercase;
   letter-spacing: 6px;
@@ -91,22 +146,23 @@ body {
 }
 
 .menu-card {
-  background: rgba(15, 16, 22, 0.85);
+  width: 100%;
+  background: rgba(14, 15, 22, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  padding: 20px;
+  border-radius: 20px;
+  padding: 14px 16px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
 }
 
 .option-title {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-dim);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   text-align: left;
 }
 
@@ -114,32 +170,32 @@ body {
 .player-setup-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .setup-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 8px 12px;
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 6px 12px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .player-label {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.85rem;
+  gap: 8px;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .color-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   box-shadow: 0 0 8px var(--dot-color);
 }
@@ -160,45 +216,135 @@ body {
   background: transparent;
   border: none;
   color: var(--text-dim);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 800;
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.role-btn:active {
+  transform: scale(0.95);
 }
 
 .role-btn.selected {
   background: #1e202c;
   color: var(--text-light);
 }
-.role-btn.selected.active-red { background: var(--color-red); color: white; }
-.role-btn.selected.active-green { background: var(--color-green); color: white; }
-.role-btn.selected.active-yellow { background: var(--color-yellow); color: #000; }
-.role-btn.selected.active-blue { background: var(--color-blue); color: white; }
+.role-btn.selected.active-red { background: var(--color-red); color: white; box-shadow: 0 0 8px var(--glow-red); }
+.role-btn.selected.active-green { background: var(--color-green); color: white; box-shadow: 0 0 8px var(--glow-green); }
+.role-btn.selected.active-yellow { background: var(--color-yellow); color: #000; box-shadow: 0 0 8px var(--glow-yellow); }
+.role-btn.selected.active-blue { background: var(--color-blue); color: white; box-shadow: 0 0 8px var(--glow-blue); }
 
 .action-btn {
   width: 100%;
   background: linear-gradient(135deg, #facc15 0%, #ca8a04 100%);
   border: none;
   color: #050508;
-  padding: 14px;
-  border-radius: 14px;
-  font-size: 0.95rem;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 0.9rem;
   font-weight: 800;
   letter-spacing: 1.2px;
   cursor: pointer;
   box-shadow: 0 5px 18px rgba(250, 204, 21, 0.2);
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.action-btn:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
 }
 
 .action-btn:active {
-  transform: scale(0.98);
+  transform: scale(0.98) translateY(0);
 }
 
 .action-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+}
+
+/* Premium Golden Ghost Button Style */
+.ghost-gold-btn {
+  background: transparent !important;
+  border: 1.5px solid #e6a100 !important;
+  color: #e6a100 !important;
+  border-radius: 15px !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.ghost-gold-btn:active {
+  background: rgba(230, 161, 0, 0.08) !important;
+  transform: scale(0.98);
+}
+
+/* Premium Select Dropdown style */
+.dropdown-style {
+  background: #09090d;
+  border: 1px solid #1e202c;
+  color: var(--text-light);
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+  outline: none;
+  text-transform: uppercase;
+}
+
+body.light-theme .dropdown-style {
+  background: #eceef2;
+  border-color: #dcdfe6;
+  color: #14151a;
+}
+
+/* Switch Toggle Design for Settings Options */
+.switch-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #1e202c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border-radius: 24px;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #f3f4f6;
+  transition: 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border-radius: 50%;
+}
+
+input:checked + .switch-slider {
+  background-color: var(--color-yellow);
+}
+
+input:checked + .switch-slider:before {
+  transform: translateX(20px);
+  background-color: #050508;
 }
 
 /* ----------------------------------
@@ -239,6 +385,7 @@ body {
 .splash-emblem-wrap {
   animation: fade-up-in 0.6s ease both, emblem-float 3s ease-in-out infinite;
   animation-delay: 0s, 0.8s;
+  cursor: pointer;
 }
 
 .splash-emblem {
@@ -293,18 +440,21 @@ body {
 }
 
 .splash-footer {
+  width: 100%;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  position: relative;
+  padding: 8px 12px;
   z-index: 1;
   animation: fade-up-in 0.6s ease both;
   animation-delay: 0.4s;
 }
 
-.utility-row {
-  display: flex;
-  gap: 14px;
+.fullscreen-corner-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 4px;
 }
 
 .icon-toggle {
@@ -318,32 +468,11 @@ body {
   align-items: center;
   font-size: 1rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .icon-toggle:active {
   transform: scale(0.92);
-}
-
-.icon-toggle input {
-  display: none;
-}
-
-.icon-toggle .icon-on {
-  display: none;
-}
-
-.icon-toggle .icon-off {
-  display: inline-flex;
-  opacity: 0.5;
-}
-
-.icon-toggle input:checked ~ .icon-on {
-  display: inline-flex;
-}
-
-.icon-toggle input:checked ~ .icon-off {
-  display: none;
 }
 
 .splash-version {
@@ -372,12 +501,20 @@ body {
   }
 }
 
+/* ----------------------------------
+ * HEADER (ABSOLUTE POSITIONING FOR AUTO-CENTERING)
+ * ---------------------------------- */
 header {
+  position: absolute;
+  top: 0px;
+  left: 0px;
   width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
+  padding: 4px 12px;
+  z-index: 10;
+  box-sizing: border-box;
 }
 
 header .logo {
@@ -387,13 +524,22 @@ header .logo {
   color: #facc15;
 }
 
-.game-team-badge {
+#team-status-indicator, .game-team-badge {
   font-size: 0.75rem;
   font-weight: bold;
   background: rgba(255,255,255,0.06);
   padding: 4px 10px;
   border-radius: 8px;
   color: var(--text-dim);
+  border: 1px solid rgba(255,255,255,0.03);
+  transition: all 0.3s ease;
+}
+
+body.light-theme #team-status-indicator,
+body.light-theme .game-team-badge {
+  background: rgba(0, 0, 0, 0.05);
+  color: #14151a;
+  border-color: rgba(0, 0, 0, 0.05);
 }
 
 .quit-btn {
@@ -405,12 +551,17 @@ header .logo {
   font-size: 0.72rem;
   cursor: pointer;
   font-weight: 800;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.quit-btn:hover {
+  background: rgba(255, 42, 95, 0.18);
+  transform: translateY(-1px);
 }
 
 .quit-btn:active {
   background: rgba(255, 42, 95, 0.25);
-  transform: scale(0.95);
+  transform: scale(0.95) translateY(0);
 }
 
 /* Constrained Standard Size Board Container */
@@ -418,18 +569,18 @@ header .logo {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  margin: 12px auto; /* স্ক্রিন ব্যালেন্সের জন্য মার্জিন সামান্য সমন্বয় করা হলো */
-  background: transparent; /* সোনালি বা বেইজ ব্যাকগ্রাউন্ড সম্পূর্ণ বাদ দেওয়া হলো */
-  padding: 0px; /* প্যাডিং ০ করে বোর্ডকে সর্বোচ্চ স্ট্যান্ডার্ড সাইজে বড় করা হলো */
+  background: transparent;
+  padding: 0px;
   box-sizing: border-box;
+  margin: 0px auto;
 }
 
 .board-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
-  background: #000000; /* গ্রিডের কালো মোটা বর্ডার তৈরি করার জন্য ব্যাকগ্রাউন্ড কালো করা হলো */
-  border: 8px solid #000000; /* ছবির মতন ফ্রেমের চারপাশের মোটা কালো বর্ডার */
+  background: #000000;
+  border: 8px solid #000000;
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.3);
   overflow: hidden;
@@ -443,11 +594,10 @@ header .logo {
   width: 100%;
   height: 100%;
   position: relative;
-  background-color: #000000; /* কালো ব্যাকগ্রাউন্ড */
-  gap: 3px; /* ছবির মতন প্রতিটি ঘরের মাঝে ৩px মোটা কালো বর্ডার লাইন */
+  background-color: #000000;
+  gap: 3px;
 }
 
-/* সাধারণ সেলের চারপাশের বর্ডার বাদ দেওয়া হলো কারণ লুপ-গ্যাপ থিক বর্ডার দেবে */
 .cell {
   border: none !important; 
   background: #ffffff;
@@ -455,25 +605,26 @@ header .logo {
   justify-content: center;
   align-items: center;
   position: relative;
+  transition: background-color 0.22s ease;
 }
 
 .cell.safe-star {
-  background: #ffffff !important; /* ছবির মতন পিওর হোয়াইট ব্যাকগ্রাউন্ড */
+  background: #ffffff !important;
 }
 
 .cell.safe-star svg {
   width: 70%;
   height: 70%;
-  filter: none !important; /* কোনো থ্রিডি বা ড্রপ শ্যাডো ছাড়া সম্পূর্ণ ফ্ল্যাট */
+  filter: none !important;
 }
 
-/* ছবির মতন প্রতিটি সেফ জোনের স্টারগুলোর আলাদা ক্লাসিক রঙ নির্ধারণ */
-.cell[style*="grid-column-start: 7"][style*="grid-row-start: 3"] svg { fill: #db1a1c !important; } /* লাল স্টার */
-.cell[style*="grid-column-start: 3"][style*="grid-row-start: 9"] svg { fill: #237fcd !important; } /* নীল স্টার */
-.cell[style*="grid-column-start: 13"][style*="grid-row-start: 7"] svg { fill: #009a44 !important; } /* সবুজ স্টার */
-.cell[style*="grid-column-start: 9"][style*="grid-row-start: 13"] svg { fill: #ffc30f !important; } /* হলুদ স্টার */
+/* Star cells styles */
+.cell[style*="grid-column-start: 7"][style*="grid-row-start: 3"] svg { fill: #db1a1c !important; }
+.cell[style*="grid-column-start: 3"][style*="grid-row-start: 9"] svg { fill: #237fcd !important; }
+.cell[style*="grid-column-start: 13"][style*="grid-row-start: 7"] svg { fill: #009a44 !important; }
+.cell[style*="grid-column-start: 9"][style*="grid-row-start: 13"] svg { fill: #ffc30f !important; }
 
-/* ছবির মতন স্টার সেলের পাশের ৪টি প্রবেশদ্বারে দিক নির্দেশক রঙ্গিন তীর (Triangles) */
+/* Entry gates direction triangles */
 .cell[style*="grid-column-start: 2"][style*="grid-row-start: 7"]::after {
   content: ''; width: 0; height: 0;
   border-top: 6px solid transparent; border-bottom: 6px solid transparent;
@@ -495,22 +646,22 @@ header .logo {
   border-bottom: 10px solid #237fcd; display: block;
 }
 
-/* ছবির মতন সম্পূর্ণ ফ্ল্যাট ক্লাসিক কালার প্যালেট (কোনো শ্যাডো বা গ্রেডিয়েন্ট ছাড়া) */
+/* Track Paths colors */
 .cell.path-red { background: #db1a1c !important; box-shadow: none !important; }
 .cell.path-green { background: #009a44 !important; box-shadow: none !important; }
 .cell.path-yellow { background: #ffc30f !important; box-shadow: none !important; }
 .cell.path-blue { background: #237fcd !important; box-shadow: none !important; }
 
-/* ৪টি কোণার ইয়ার্ড বা বেস প্লেট (সম্পূর্ণ ফ্ল্যাট এবং মোটা ৪px কালো বর্ডার) */
+/* Yards config */
 .yard {
   position: absolute;
   width: 40%;
   height: 40%;
-  border-radius: 0px !important; /* তীক্ষ্ণ কোণা */
+  border-radius: 0px !important;
   padding: 10px;
   box-sizing: border-box;
-  border: 4px solid #000000 !important; /* ছবির মতন মোটা কালো বর্ডার */
-  box-shadow: none !important; /* কোনো থ্রিডি শ্যাডো নেই */
+  border: 4px solid #000000 !important;
+  box-shadow: none !important;
   transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
@@ -531,26 +682,24 @@ header .logo {
   }
 }
 
-/* ছবির মতন গোল আকৃতির ইয়ার্ড ইনার */
 .yard-inner {
   width: 82%;
   height: 82%;
-  border-radius: 50% !important; /* পারফেক্ট বৃত্তাকার বৃত্ত */
+  border-radius: 50% !important;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   padding: 10%;
   margin: auto;
-  border: 4px solid #000000 !important; /* গোল বৃত্তের চারপাশের কালো বর্ডার */
+  border: 4px solid #000000 !important;
   box-shadow: none !important;
   box-sizing: border-box;
 }
 
-/* গুটি বসার জন্য সলিড সাদা বৃত্তাকার স্পট */
 .yard-spot {
   border-radius: 50% !important;
   margin: 10%;
-  border: 4px solid #000000 !important; /* ছবির মতন বর্ডার */
+  border: 4px solid #000000 !important;
   background: #ffffff !important; 
   display: flex;
   justify-content: center;
@@ -558,19 +707,17 @@ header .logo {
   box-shadow: none !important;
 }
 
-/* ছবির মতন ৪টি রঙের ক্লাসিক কম্বিনেশন */
 .yard.red { top: 0; left: 0; background: #db1a1c !important; --player-color: #db1a1c; }
 .yard.green { top: 0; right: 0; background: #009a44 !important; --player-color: #009a44; }
 .yard.yellow { bottom: 0; right: 0; background: #ffc30f !important; --player-color: #ffc30f; }
 .yard.blue { bottom: 0; left: 0; background: #237fcd !important; --player-color: #237fcd; }
 
-/* বৃত্তাকার স্পট ব্যাকগ্রাউন্ডকে ছবির মতন সামান্য ডার্ক টোন করা */
 .yard.red .yard-inner { background: #b81416 !important; }
 .yard.green .yard-inner { background: #008037 !important; }
 .yard.yellow .yard-inner { background: #e0ab0b !important; }
 .yard.blue .yard-inner { background: #1b5fa0 !important; }
 
-/* ছবির মতন গোল এরিয়া (৪টি সমকোণী ত্রিভুজের মিলনস্থল ও ৪px কালো বর্ডার) */
+/* Goal Area */
 .center-goal {
   position: absolute;
   top: 40%;
@@ -589,26 +736,41 @@ header .logo {
   display: block;
 }
 
-/* SVG এর ভেতরের গ্রেডিয়েন্ট বাদ দিয়ে ছবির মতন হুবহু ফ্ল্যাট সলিড রঙে রূপান্তর */
 .center-goal svg polygon[fill*="grad-red"] { fill: #db1a1c !important; }
 .center-goal svg polygon[fill*="grad-green"] { fill: #009a44 !important; }
 .center-goal svg polygon[fill*="grad-yellow"] { fill: #ffc30f !important; }
 .center-goal svg polygon[fill*="grad-blue"] { fill: #237fcd !important; }
 
-/* ৪টি ত্রিভুজের মিলনরেখাকে মোটা কালো লাইন করা */
 .center-goal svg polygon[stroke] {
   stroke: #000000 !important;
   stroke-width: 4px !important;
 }
 
-/* কেন্দ্রের সাদা বৃত্তটি ছবিতে নেই, তাই লুকিয়ে ফেলা হলো */
 .center-goal svg circle {
   display: none !important;
 }
 
+/* ----------------------------------
+ * LOCALIZED PLAYER PANEL WRAPPER (DICE + POWER CONTAINER)
+ * ---------------------------------- */
+.player-panel-wrapper {
+  position: absolute !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 100;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.player-panel-wrapper.red { top: -48px; left: 8%; flex-direction: row; }
+.player-panel-wrapper.green { top: -48px; right: 8%; flex-direction: row-reverse; }
+.player-panel-wrapper.blue { bottom: -48px; left: 8%; flex-direction: row; }
+.player-panel-wrapper.yellow { bottom: -48px; right: 8%; flex-direction: row-reverse; }
+
 /* 3D Dice styling */
 .floating-dice {
-  position: absolute;
+  position: relative;
   width: 40px;
   height: 40px;
   perspective: 150px;
@@ -616,7 +778,6 @@ header .logo {
   transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1);
   opacity: 0.1;
   pointer-events: none;
-  z-index: 99;
 }
 
 .floating-dice.active-turn {
@@ -627,16 +788,135 @@ header .logo {
   animation: dice-pulse 1.2s infinite alternate ease-in-out;
 }
 
+.floating-dice.active-turn:hover {
+  transform: scale(1.25) rotate(10deg);
+}
+
 @keyframes dice-pulse {
   0% { transform: scale(1.1); }
   100% { transform: scale(1.22); }
 }
 
-.floating-dice.red { top: -48px; left: 8%; --player-color: var(--color-red); }
-.floating-dice.green { top: -48px; right: 8%; --player-color: var(--color-green); }
-.floating-dice.blue { bottom: -48px; left: 8%; --player-color: var(--color-blue); }
-.floating-dice.yellow { bottom: -48px; right: 8%; --player-color: var(--color-yellow); }
+/* ----------------------------------
+ * DOCK CONTAINER ATTACHED TO DICE
+ * ---------------------------------- */
+.local-power-dock {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+  background: rgba(14, 15, 22, 0.96);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.65);
+  padding: 4px 8px;
+  border-radius: 20px;
+  height: 34px;
+  animation: dock-fade-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
 
+@keyframes dock-fade-in {
+  from { opacity: 0; transform: scale(0.9) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.power-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dock-divider {
+  width: 1.5px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 2px;
+}
+
+.circle-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-light);
+  font-size: 0.65rem;
+  font-weight: 900;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.circle-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffffff;
+  transform: scale(1.08);
+}
+
+.circle-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.circle-btn:disabled {
+  opacity: 0.15;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Cosmic Powers */
+.cosmic .circle-btn {
+  border-color: rgba(250, 204, 21, 0.3);
+}
+.cosmic .circle-btn:hover:not(:disabled) {
+  border-color: var(--color-yellow);
+  box-shadow: 0 0 8px var(--glow-yellow);
+}
+.cosmic .circle-btn.selected {
+  background: var(--color-yellow) !important;
+  color: #000000 !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 10px var(--glow-yellow);
+}
+
+/* Bonus Steps Points */
+.bonus .circle-btn {
+  border-color: rgba(0, 153, 255, 0.3);
+}
+.bonus .circle-btn:hover:not(:disabled) {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 8px var(--glow-blue);
+}
+.bonus .circle-btn.selected {
+  background: var(--color-blue) !important;
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 10px var(--glow-blue);
+}
+
+/* Power Badges */
+.power-badge {
+  font-size: 0.6rem;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 6px;
+  margin-left: 2px;
+}
+.cosmic-badge {
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--color-yellow);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+}
+.bonus-badge {
+  background: rgba(0, 153, 255, 0.12);
+  color: #66d1ff;
+  border: 1px solid rgba(0, 153, 255, 0.3);
+}
+
+/* ----------------------------------
+ * 3D CUBE DICE GRAPHICS
+ * ---------------------------------- */
 .cube {
   width: 100%;
   height: 100%;
@@ -675,96 +955,6 @@ header .logo {
 .face.f-5 { transform: rotateX( 90deg) translateZ(20px); }
 .face.f-6 { transform: rotateX(180deg) translateZ(20px); }
 
-/* ----------------------------------
- * COSMIC POWER HUB PANEL (PREMIUM UI)
- * ---------------------------------- */
-.power-hub {
-  background: linear-gradient(135deg, rgba(14, 15, 22, 0.95) 0%, rgba(5, 5, 8, 0.98) 100%);
-  border: 1px solid rgba(250, 204, 21, 0.22);
-  box-shadow: 0 0 20px rgba(250, 204, 21, 0.08);
-  border-radius: 18px;
-  padding: 12px;
-  margin: 10px auto;
-  width: 95%;
-  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.power-hub.active-glow {
-  border-color: var(--color-yellow);
-  box-shadow: 0 0 25px var(--glow-yellow);
-}
-
-.power-hub.active-red { border-color: var(--color-red); box-shadow: 0 0 15px var(--glow-red); }
-.power-hub.active-green { border-color: var(--color-green); box-shadow: 0 0 15px var(--glow-green); }
-.power-hub.active-blue { border-color: var(--color-blue); box-shadow: 0 0 15px var(--glow-blue); }
-
-.hub-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.hub-title {
-  font-size: 0.72rem;
-  font-weight: 900;
-  color: var(--color-yellow);
-  letter-spacing: 1px;
-}
-
-.hub-subtitle {
-  font-size: 0.62rem;
-  color: var(--text-dim);
-}
-
-.power-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.power-btn {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 10px;
-  padding: 8px 4px;
-  color: var(--text-light);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s ease;
-}
-
-.power-btn:hover:not(:disabled) {
-  background: rgba(250, 204, 21, 0.08);
-  border-color: var(--color-yellow);
-}
-
-.power-btn:disabled {
-  opacity: 0.22;
-  cursor: not-allowed;
-}
-
-.power-btn.selected {
-  background: var(--color-yellow) !important;
-  border-color: #ffffff !important;
-  color: #000000 !important;
-  box-shadow: 0 0 15px var(--glow-yellow);
-}
-
-.power-icon {
-  font-size: 1.1rem;
-}
-
-.power-name {
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 /* Custom Notification Toast */
 .custom-toast {
   position: fixed;
@@ -783,6 +973,8 @@ header .logo {
   text-align: center;
   pointer-events: none;
   max-width: 90%;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .custom-toast.show {
@@ -865,19 +1057,89 @@ header .logo {
   border: 1px solid #1c1c25;
 }
 
+.badge-pill {
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  color: var(--color-yellow);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* =============================================================
+   UPGRADED NEON GLOW PREVIEW BOARD HIGHLIGHTS (Overlay System)
+   ============================================================= */
+.cell.preview-highlight::before,
+.cell.preview-safe-highlight::before,
+.cell.preview-capture-highlight::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border: 3.5px solid currentColor;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+  animation: preview-pulse 1s infinite ease-in-out;
+}
+
+/* Dynamic Color Mapping */
+.cell.preview-highlight {
+  color: var(--color-yellow) !important;
+}
+
+.cell.preview-safe-highlight {
+  color: var(--color-green) !important;
+}
+
+.cell.preview-capture-highlight {
+  color: var(--color-red) !important;
+}
+
+/* Premium Pulsing Glow Animation */
+@keyframes preview-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 10px currentColor, 0 0 12px currentColor;
+    opacity: 0.45;
+  }
+  50% {
+    box-shadow: inset 0 0 20px currentColor, 0 0 22px currentColor;
+    opacity: 0.98;
+  }
+}
+
 .hidden {
   display: none !important;
 }
 
-/* ----------------------------------
- * SPLASH ENHANCEMENTS
- * ---------------------------------- */
+/* Splash stats */
 .splash-stats-line {
   margin-top: 8px;
   font-size: 0.68rem;
   color: var(--text-dim);
   opacity: 0.75;
   letter-spacing: 0.5px;
+}
+
+#stats-quick-line {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 12px;
+  border-radius: 12px;
+  margin-top: 8px;
+  display: inline-block;
+  transition: all 0.3s ease;
+}
+
+body.light-theme #stats-quick-line {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #14151a;
 }
 
 .rules-link.splash-secondary-link {
@@ -918,11 +1180,12 @@ body.light-theme {
 body.light-theme .menu-card {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 body.light-theme .setup-row {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.04);
 }
 
 body.light-theme .role-selector {
@@ -944,8 +1207,25 @@ body.light-theme .icon-toggle {
   border-color: rgba(0, 0, 0, 0.08);
 }
 
-body.light-theme .power-hub {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 245, 247, 0.98) 100%);
+body.light-theme .local-power-dock {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .circle-btn {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: var(--text-light);
+}
+
+body.light-theme .circle-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+body.light-theme .dock-divider {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 body.light-theme .custom-toast {
@@ -958,21 +1238,34 @@ body.light-theme .podium-item {
   border-color: #dcdfe6;
 }
 
+body.light-theme .switch-slider {
+  background-color: #eceef2;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .switch-slider:before {
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+body.light-theme input:checked + .switch-slider {
+  background-color: #ca8a04;
+}
+
 /* =============================================================
-   COMPATIBLE 3D GLASS SPHERE TOKENS (USER DESIGNED & OPTIMIZED)
+   COMPATIBLE 3D GLASS SPHERE TOKENS
    ============================================================= */
 .token {
   position: absolute !important;
-  width: 7.2% !important; /* মার্বেলের আকার সামঞ্জস্যপূর্ণ রাখতে ৭.২% করা হলো */
+  width: 7.2% !important;
   height: 7.2% !important;
-  border-radius: 50% !important; /* গোল আকৃতি নিশ্চিত করার জন্য */
+  border-radius: 50% !important;
   z-index: 10;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
   will-change: left, top, transform;
-  /* মার্বেলের নিচে সফট ড্রপ শ্যাডো */
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.45) !important;
   transition: left 0.22s cubic-bezier(0.25, 1, 0.5, 1), 
               top 0.22s cubic-bezier(0.25, 1, 0.5, 1), 
@@ -980,7 +1273,6 @@ body.light-theme .podium-item {
               opacity 0.2s ease;
 }
 
-/* গোলকের ওপর আপনার চমৎকার থ্রিডি গ্লসি রিফ্লেকশন */
 .token::after {
   content: "" !important;
   position: absolute !important;
@@ -993,7 +1285,6 @@ body.light-theme .podium-item {
   pointer-events: none;
 }
 
-/* আপনার ডিজাইন করা ৪টি প্লেয়ারের থ্রিডি কালার গ্রেডিয়েন্ট ও বর্ডার */
 .token.red { 
   background: radial-gradient(circle at 40% 40%, #ff6b8b, #b3002d) !important; 
   border: 1.5px solid #ffccd5 !important; 
@@ -1015,13 +1306,11 @@ body.light-theme .podium-item {
   --player-color: var(--color-blue); 
 }
 
-/* গুটি লাফানোর সময় (Hopping) ডাইনামিক অফসেট ও স্কেলের পারফেক্ট সমন্বয় */
 .token.hopping {
   transform: translate(calc(var(--col-offset) * 1%), calc(var(--row-offset) * 1%)) scale(calc(var(--token-scale, 1) * 1.35)) translateY(-25%) !important;
   z-index: 999 !important;
 }
 
-/* গুটি খাওয়ার সময় (Capturing) ১৮০ ডিগ্রি ঘুরে যাওয়ার এফেক্ট */
 .token.capturing {
   opacity: 0.85;
   z-index: 998;
@@ -1029,13 +1318,11 @@ body.light-theme .podium-item {
   transition: left 0.1s linear, top 0.1s linear, transform 0.1s linear !important;
 }
 
-/* চাল দেওয়ার উপযোগী (Playable) সচল গুটিগুলোর ডাইনামিক গ্লো ও পালস অ্যানিমেশন */
 .token.playable {
   animation: play-pulse 0.8s infinite alternate ease-in-out !important;
   z-index: 99 !important;
 }
 
-/* ডাইনামিক স্কেল-বান্ধব পালস অ্যানিমেশন (যা একাধিক গুটি এক ঘরে জমলেও সাইজ নষ্ট করবে না) */
 @keyframes play-pulse {
   0% {
     transform: translate(calc(var(--col-offset) * 1%), calc(var(--row-offset) * 1%)) scale(var(--token-scale, 1)) !important;
