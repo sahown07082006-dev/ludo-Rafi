@@ -65,39 +65,119 @@ const SAFE_ZONES = [
 ];
 
 /*************************************************************
- * 2. AUDIO SYNTHESIZER ENGINE — PREMIUM / REALISTIC EDITION
- *
- * এই ফাইলটি পুরনো "2. AUDIO SYNTHESIZER ENGINE" সেকশনের সম্পূর্ণ
- * প্রতিস্থাপন। বাইরের কল-সিগনেচার অপরিবর্তিত:
- *   initAudio(), playSound(type), triggerHaptic(type)
- * তাই কোডবেসের বাকি অংশে কিছু বদলাতে হবে না।
- *
- * নতুন যা যোগ হয়েছে:
- *   • Master Reverb Bus — প্রতিটি শব্দে সূক্ষ্ম রুম-অ্যাম্বিয়েন্স
- *   • Noise-based texture — বাস্তবসম্মত "খড়খড়" ও "থাপ্পড়" শব্দ
- *   • Per-play humanized variation (pitch/timing/pan jitter)
- *   • Stereo panning ও filter shaping দিয়ে প্রিমিয়াম টোন
+ * 1.1 SPATIAL, TEAM & SYSTEM HELPER FUNCTIONS
  *************************************************************/
+function isCoordinateSafe(col, row) {
+  return SAFE_ZONES.some(coord => Math.abs(coord[0] - col) < 0.1 && Math.abs(coord[1] - row) < 0.1);
+}
 
+function areTeammates(p1, p2) {
+  if (!isTeamMode) return false;
+  if ((p1 === 'red' || p1 === 'yellow') && (p2 === 'red' || p2 === 'yellow')) return true;
+  if ((p1 === 'green' || p1 === 'blue') && (p2 === 'green' || p2 === 'blue')) return true;
+  return false;
+}
+
+function getTeammate(player) {
+  if (!isTeamMode) return null;
+  if (player === 'red') return 'yellow';
+  if (player === 'yellow') return 'red';
+  if (player === 'green') return 'blue';
+  if (player === 'blue') return 'green';
+  return null;
+}
+
+function checkPlayerFinish(player) {
+  return tokens[player].every(t => t.pos === 57);
+}
+
+function checkTeamFinish(player) {
+  if (!isTeamMode) return checkPlayerFinish(player);
+  const teammate = getTeammate(player);
+  return checkPlayerFinish(player) && (!teammate || checkPlayerFinish(teammate));
+}
+
+function countThreats(coord, player) {
+  let threats = 0;
+  activeOrder.forEach(opp => {
+    if (opp === player || areTeammates(player, opp)) return;
+    tokens[opp].forEach((oppToken, oppIdx) => {
+      if (oppToken.pos <= 0 || oppToken.pos >= 52) return;
+      for (let roll = 1; roll <= 6; roll++) {
+        const simPos = oppToken.pos + roll;
+        const simCoord = simulateTargetCoordinates(opp, oppIdx, simPos);
+        if (simCoord && Math.abs(simCoord[0] - coord[0]) < 0.1 && Math.abs(simCoord[1] - coord[1]) < 0.1) {
+          threats++;
+        }
+      }
+    });
+  });
+  return threats;
+}
+
+function isTokenCurrentlyThreatened(player, tokenIdx) {
+  const pos = tokens[player][tokenIdx].pos;
+  if (pos <= 0 || pos >= 52) return false;
+  const coord = getTokenCoordinates(player, tokenIdx);
+  if (isCoordinateSafe(coord[0], coord[1])) return false;
+  return countThreats(coord, player) > 0;
+}
+
+function getNearestSafeZonePos(player, tokenIdx) {
+  const pos = tokens[player][tokenIdx].pos;
+  if (pos <= 0 || pos >= 52) return null;
+  for (let checkPos = pos + 1; checkPos < 52; checkPos++) {
+    const coord = simulateTargetCoordinates(player, tokenIdx, checkPos);
+    if (coord && isCoordinateSafe(coord[0], coord[1])) {
+      return checkPos;
+    }
+  }
+  return null;
+}
+
+function renderStatsLine() {
+  const el = document.getElementById('stats-quick-line');
+  if (!el) return;
+  const stats = loadStats();
+  const won = stats.matchesWon || 0;
+  const played = stats.matchesPlayed || 0;
+  el.textContent = `Stats: ${won}/${played} Matches Won`;
+}
+
+function passTurn() {
+  consecutiveSixes = 0;
+  let attempts = 0;
+  do {
+    currentTurnIndex = (currentTurnIndex + 1) % activeOrder.length;
+    currentPlayer = activeOrder[currentTurnIndex];
+    attempts++;
+  } while (
+    (isTeamMode ? checkTeamFinish(currentPlayer) : checkPlayerFinish(currentPlayer)) &&
+    attempts < activeOrder.length
+  );
+  
+  if (isGameRunning) {
+    setTurnState(currentPlayer);
+  }
+}
+
+/*************************************************************
+ * 2. AUDIO SYNTHESIZER ENGINE — PREMIUM / REALISTIC EDITION
+ *************************************************************/
 let audioCtx = null;
 let masterGain = null;
 let masterCompressor = null;
 let masterBus = null;
 let noiseBuffer = null;
 
-/*=============================================================
- * 2.0 CORE AUDIO GRAPH SETUP (একবারই তৈরি হয়)
- *============================================================*/
 function initAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // মাস্টার আউটপুট
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1.0;
   masterGain.connect(audioCtx.destination);
 
-  // মাস্টার কম্প্রেসার (প্রিমিয়াম লাউডনেস কন্ট্রোল)
   masterCompressor = audioCtx.createDynamicsCompressor();
   masterCompressor.threshold.setValueAtTime(-8, audioCtx.currentTime);
   masterCompressor.knee.setValueAtTime(18, audioCtx.currentTime);
@@ -106,7 +186,6 @@ function initAudio() {
   masterCompressor.release.setValueAtTime(0.15, audioCtx.currentTime);
   masterCompressor.connect(masterGain);
 
-  // মাস্টার রিভার্ব সেন্ড (রুম-অ্যাম্বিয়েন্স — শব্দকে "flat" শোনানো থেকে বাঁচায়)
   const reverbSend = audioCtx.createGain();
   reverbSend.gain.value = 0.16;
   const reverbNode = audioCtx.createConvolver();
@@ -114,7 +193,6 @@ function initAudio() {
   reverbSend.connect(reverbNode);
   reverbNode.connect(masterGain);
 
-  // সব ভয়েস এই বাসেই কানেক্ট হবে, যা ড্রাই (কম্প্রেসার) ও ওয়েট (রিভার্ব) দুই পথেই যায়
   masterBus = audioCtx.createGain();
   masterBus.gain.value = 1.0;
   masterBus.connect(masterCompressor);
@@ -123,7 +201,6 @@ function initAudio() {
   noiseBuffer = _buildNoiseBuffer();
 }
 
-/** প্রোসিডুরালি একটি রিভার্ব ইমপালস রেসপন্স তৈরি করে (এক্সটার্নাল ফাইলের দরকার নেই) */
 function _buildImpulseResponse(duration, decay) {
   const sampleRate = audioCtx.sampleRate;
   const length = Math.max(1, Math.floor(sampleRate * duration));
@@ -137,7 +214,6 @@ function _buildImpulseResponse(duration, decay) {
   return impulse;
 }
 
-/** সাদা নয়েজ বাফার তৈরি করে — খড়খড়/ইমপ্যাক্ট টেক্সচারের ভিত্তি */
 function _buildNoiseBuffer() {
   const bufferSize = audioCtx.sampleRate * 1;
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -150,11 +226,6 @@ function _rand(min, max) {
   return min + Math.random() * (max - min);
 }
 
-/*=============================================================
- * 2.1 REUSABLE VOICE HELPERS
- *============================================================*/
-
-/** একটি অসিলেটর-ভিত্তিক টোন শিডিউল করে, ঐচ্ছিক ফিল্টার ও প্যানসহ */
 function _scheduleTone({
   waveType = 'triangle', freqStart, freqEnd, duration,
   gainStart = 0.8, gainEnd = 0.01, startTime = 0, pan = 0,
@@ -195,7 +266,6 @@ function _scheduleTone({
   osc.stop(now + duration + 0.02);
 }
 
-/** ফিল্টারড নয়েজ বার্স্ট শিডিউল করে — বাস্তবসম্মত ইমপ্যাক্ট/টেক্সচারের জন্য */
 function _scheduleNoiseBurst({
   duration, filterType = 'bandpass', filterFreq = 1000, Q = 1,
   gainStart = 0.8, gainEnd = 0.01, startTime = 0, pan = 0
@@ -229,9 +299,6 @@ function _scheduleNoiseBurst({
   src.stop(now + duration + 0.02);
 }
 
-/*=============================================================
- * 2.2 SOUND DISPATCHER
- *============================================================*/
 function playSound(type) {
   const soundToggle = document.getElementById('sound-toggle');
   const isSoundOn = soundToggle ? soundToggle.checked : true;
@@ -242,25 +309,21 @@ function playSound(type) {
   }
 
   if (type === 'hop') {
-    // মানবিক বৈচিত্র্য: প্রতিবার সামান্য ভিন্ন পিচ ও প্যান
     const pitchJitter = _rand(-15, 15);
     const pan = _rand(-0.15, 0.15);
 
-    // লেয়ার ১: উষ্ণ রেজোন্যান্ট বডি (lowpass দিয়ে গোলগাল টোন)
     _scheduleTone({
       waveType: 'triangle', freqStart: 320 + pitchJitter, freqEnd: 640 + pitchJitter,
       duration: 0.16, gainStart: 0.85, gainEnd: 0.01, pan,
       filterType: 'lowpass', filterFreq: 2200
     });
 
-    // লেয়ার ২: তীক্ষ্ণ ট্যাকটাইল পপ
     _scheduleTone({
       waveType: 'triangle', freqStart: 1400 + _rand(-60, 60), freqEnd: 600,
       duration: 0.035, gainStart: 0.92, gainEnd: 0.01, pan
     });
 
   } else if (type === 'roll') {
-    // আন্ডারলেয়ার: টেবিলে গড়িয়ে যাওয়ার ধারাবাহিক টেক্সচার (রেজোন্যান্ট নয়েজ সুইপ)
     const rollDuration = 0.32;
     const now = audioCtx.currentTime;
     const src = audioCtx.createBufferSource();
@@ -279,7 +342,6 @@ function playSound(type) {
     src.start(now);
     src.stop(now + rollDuration + 0.02);
 
-    // মাইক্রো-ইমপ্যাক্ট ক্লিক (অসম বিরতিতে — বাস্তব ডাইসের খড়খড় শব্দ)
     let t = 0;
     for (let i = 0; i < 6; i++) {
       t += _rand(0.03, 0.06);
@@ -298,13 +360,11 @@ function playSound(type) {
   } else if (type === 'capture') {
     const pan = _rand(-0.1, 0.1);
 
-    // ইমপ্যাক্ট ট্রানজিয়েন্ট (আঘাতের বাস্তব "থাপ্পড়" অনুভূতি)
     _scheduleNoiseBurst({
       duration: 0.05, filterType: 'highpass', filterFreq: 1800, Q: 0.7,
       gainStart: 0.9, gainEnd: 0.01, pan
     });
 
-    // প্রধান ক্র্যাশ সুইপ (lowpass দিয়ে বাস্তবসম্মত ডার্কেনিং)
     _scheduleTone({
       waveType: 'sawtooth', freqStart: 750, freqEnd: 90, duration: 0.45,
       gainStart: 0.9, gainEnd: 0.01, pan, filterType: 'lowpass', filterFreq: 2000
@@ -314,7 +374,6 @@ function playSound(type) {
       gainStart: 0.65, gainEnd: 0.01, pan
     });
 
-    // মেটালিক ক্ল্যাং (দুটি সামান্য ডিটিউনড টোন)
     _scheduleTone({ waveType: 'square', freqStart: 220, freqEnd: 180, duration: 0.25, gainStart: 0.18, gainEnd: 0.01, pan: pan + 0.12 });
     _scheduleTone({ waveType: 'square', freqStart: 227, freqEnd: 185, duration: 0.25, gainStart: 0.15, gainEnd: 0.01, pan: pan - 0.12 });
 
@@ -324,7 +383,6 @@ function playSound(type) {
       const t = idx * 0.06 + _rand(-0.005, 0.01);
       const pan = _rand(-0.2, 0.2);
       _scheduleTone({ waveType: 'triangle', freqStart: freq, freqEnd: freq, duration: 0.22, gainStart: 0.85, gainEnd: 0.01, startTime: t, pan });
-      // হারমনিক ওভারটোন — সমৃদ্ধ ঘণ্টার মতো টিমব্রে
       _scheduleTone({ waveType: 'sine', freqStart: freq * 2, freqEnd: freq * 2, duration: 0.18, gainStart: 0.22, gainEnd: 0.01, startTime: t, pan });
     });
 
@@ -343,7 +401,7 @@ function playSound(type) {
         const filter = audioCtx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(800, now);
-        filter.frequency.exponentialRampToValueAtTime(4000, now + 0.18); // পাওয়ার-সার্জ ফিল্টার ওপেনিং
+        filter.frequency.exponentialRampToValueAtTime(4000, now + 0.18);
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(freq, now);
         osc.detune.setValueAtTime(detune, now);
@@ -363,7 +421,6 @@ function playSound(type) {
       const t = idx * 0.04;
       const pan = _rand(-0.4, 0.4);
       _scheduleTone({ waveType: 'sine', freqStart: freq, freqEnd: freq, duration: 0.18, gainStart: 0.8, gainEnd: 0.01, startTime: t, pan });
-      // শিমার নয়েজ — স্পার্কল ধুলোর মতো টেক্সচার
       _scheduleNoiseBurst({ duration: 0.06, filterType: 'highpass', filterFreq: 6000, gainStart: 0.12, gainEnd: 0.01, startTime: t, pan });
     });
 
@@ -378,7 +435,6 @@ function playSound(type) {
     });
 
   } else if (type === 'victory') {
-    // সাব-বেস থাম্প — গাম্ভীর্য ও ওজন যোগ করে
     _scheduleTone({ waveType: 'sine', freqStart: 80, freqEnd: 50, duration: 0.3, gainStart: 0.5, gainEnd: 0.01 });
 
     const chords = [
@@ -389,7 +445,7 @@ function playSound(type) {
     chords.forEach((chord, chordIdx) => {
       const t = chordIdx * 0.22;
       chord.forEach((freq, ni) => {
-        const pan = (ni - (chord.length - 1) / 2) * 0.25; // কর্ডের প্রতিটি নোট স্টেরিও-তে ছড়ানো
+        const pan = (ni - (chord.length - 1) / 2) * 0.25;
         _scheduleTone({ waveType: 'triangle', freqStart: freq, freqEnd: freq, duration: 0.5, gainStart: 0.6, gainEnd: 0.01, startTime: t, pan });
       });
     });
@@ -401,15 +457,12 @@ function playSound(type) {
       _scheduleTone({
         waveType: 'sawtooth', freqStart: freq, freqEnd: freq * 0.85, duration: 0.14,
         gainStart: 0.65, gainEnd: 0.01, startTime: t,
-        filterType: 'lowpass', filterFreq: 1200 - idx * 150 // ক্রমশ ডার্কার হয়ে হতাশা প্রকাশ করে
+        filterType: 'lowpass', filterFreq: 1200 - idx * 150
       });
     });
   }
 }
 
-/*=============================================================
- * 2.3 HAPTIC FEEDBACK
- *============================================================*/
 function triggerHaptic(type) {
   const vibeToggle = document.getElementById('vibe-toggle');
   const isVibeOn = vibeToggle ? vibeToggle.checked : true;
@@ -420,30 +473,7 @@ function triggerHaptic(type) {
   else if (type === 'victory') navigator.vibrate([70, 40, 70]);
   else if (type === 'six') navigator.vibrate([15, 10, 15, 10, 25]);
   else if (type === 'error') navigator.vibrate(45);
-  else if (type === 'powerup') navigator.vibrate([20, 15, 40]);
 }
-/*************************************************************
- * BACKGROUND TAB SILENCER — অ্যাপ সুইচ করলে শব্দ ও বট থামায়
- *************************************************************/
-let isTabActive = true;
-
-document.addEventListener('visibilitychange', () => {
-  isTabActive = !document.hidden;
-
-  if (document.hidden) {
-    if (audioCtx && audioCtx.state === 'running') {
-      audioCtx.suspend(); // ব্যাকগ্রাউন্ডে গেলে অডিও থামিয়ে দিন
-    }
-  } else {
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume(); // ফিরে এলে অডিও আবার চালু করুন
-    }
-    // ফিরে আসার সময় যদি বটের টার্ন আটকে থাকে, আবার ট্রিগার করুন
-    if (typeof currentPlayer !== 'undefined' && isBotPlayer(currentPlayer) && !isMoving) {
-      executeBotTurn();
-    }
-  }
-});
 
 /*************************************************************
  * 3. GAME STATE & SETUP CONFIG
@@ -464,11 +494,17 @@ let diceValue = 1;
 let diceRolled = false;
 let consecutiveSixes = 0;
 let isMoving = false;
+let isGameRunning = false;
 
 const captureCounts = { red: 0, green: 0, yellow: 0, blue: 0 };
 const powerCharges = { red: 0, green: 0, yellow: 0, blue: 0 };
+
+// Bonus Points state
+const bonusPoints = { red: 0, green: 0, yellow: 0, blue: 0 };
+let activeBonusSelected = null;
+
 let nextRollForcedValue = null;
-let activePowerSelected = null; // 'swift_leap' | 'aegis_teleport'
+let activePowerSelected = null;
 
 const tokens = {
   red:    [{ pos: 0 }, { pos: 0 }, { pos: 0 }, { pos: 0 }],
@@ -487,6 +523,27 @@ const diceFaceRotations = {
   5: { x: -90, y: 0 },
   6: { x: 180, y: 0 }
 };
+
+let botActionTimeoutId = null;
+
+// TOURNAMENT STATES
+let isTournamentActive = false;
+let tournamentRound = 1;
+let tournamentScores = { red: 0, green: 0, yellow: 0, blue: 0 };
+let tournamentPlacements = [];
+
+// STATS PERSISTENCE LOCAL VARIABLES
+let currentMatchTurns = 0;
+let currentMatchCaptures = { red: 0, green: 0, yellow: 0, blue: 0 };
+let currentMatchMaxSixes = { red: 0, green: 0, yellow: 0, blue: 0 };
+
+function bindInstantTap(element, callback) {
+  if (!element) return;
+  element.onpointerdown = (e) => {
+    e.preventDefault();
+    callback();
+  };
+}
 
 /*************************************************************
  * 4. SETUP CONTROL PANEL INTERACTIVITY
@@ -531,28 +588,46 @@ function setPlayerType(player, type) {
   validateLobbySettings();
 }
 
+function changeGlobalBotDifficulty(difficulty) {
+  playSound('click');
+  setBotDifficulty(difficulty);
+}
+
 function validateLobbySettings() {
   const activeCount = Object.values(playerSettings).filter(val => val !== 'off').length;
   const startBtn = document.getElementById('start-btn');
+  const tournamentBtn = document.getElementById('tournament-btn');
   if (!startBtn) return;
   
   if (isTeamMode) {
     if (activeCount !== 4) {
       startBtn.disabled = true;
       startBtn.innerText = "TEAM MODE REQUIRES 4 PLAYERS";
+      if (tournamentBtn) tournamentBtn.disabled = true;
       return;
     }
     startBtn.disabled = false;
     startBtn.innerText = "START TEAM MATCH (2v2)";
+    if (tournamentBtn) tournamentBtn.disabled = true;
     return;
   }
 
   if (activeCount < 2) {
     startBtn.disabled = true;
     startBtn.innerText = "MINIMUM 2 PLAYERS REQ.";
+    if (tournamentBtn) tournamentBtn.disabled = true;
   } else {
     startBtn.disabled = false;
     startBtn.innerText = "START MATCH";
+    
+    const humanCount = Object.values(playerSettings).filter(val => val === 'human').length;
+    if (tournamentBtn) {
+      if (humanCount >= 2 && activeCount === 4) {
+        tournamentBtn.disabled = false;
+      } else {
+        tournamentBtn.disabled = true;
+      }
+    }
   }
 }
 
@@ -575,6 +650,9 @@ function generateGridCells() {
       cell.classList.add('cell');
       cell.style.gridColumnStart = c + 1;
       cell.style.gridRowStart = r + 1;
+      
+      cell.setAttribute('data-col', c);
+      cell.setAttribute('data-row', r);
       
       applyCellStyles(cell, c, r);
       grid.appendChild(cell);
@@ -620,9 +698,9 @@ function generateTokenElements() {
       const token = document.createElement('div');
       token.className = `token ${player}`;
       token.id = `token-${player}-${i}`;
-      token.onclick = () => onTokenTapped(player, i);
-      // ভেতরটি খালি রাখা হলো কারণ CSS pseudo-element (::after) দিয়ে গ্লসি মার্বেল ইফেক্ট রেন্ডার হবে
-      token.innerHTML = ``;
+      
+      setupTokenTouchEvents(token, player, i);
+      
       layer.appendChild(token);
     }
   });
@@ -633,14 +711,7 @@ function generateTokenElements() {
  *************************************************************/
 function getTokenCoordinates(player, tokenIdx) {
   const pos = tokens[player][tokenIdx].pos;
-  const config = PLAYER_CONFIGS[player];
-  
-  if (pos === 0) return config.yard[tokenIdx];
-  if (pos === 57) return config.goal;
-  if (pos >= 52 && pos <= 56) return config.homePath[pos - 52];
-  
-  const index = (config.startIndex + pos - 1) % 52;
-  return TRACK[index];
+  return simulateTargetCoordinates(player, tokenIdx, pos);
 }
 
 function updateTokenPositions() {
@@ -686,9 +757,9 @@ function updateTokenPositions() {
       }
       
       const finalCol = Number.isInteger(col) ? col + 0.5 : col;
-const finalRow = Number.isInteger(row) ? row + 0.5 : row;
-el.style.left = `calc(${finalCol} * 6.6667% - 3.6%)`;
-el.style.top = `calc(${finalRow} * 6.6667% - 3.6%)`;
+      const finalRow = Number.isInteger(row) ? row + 0.5 : row;
+      el.style.left = `calc(${finalCol} * 6.6667% - 3.6%)`;
+      el.style.top = `calc(${finalRow} * 6.6667% - 3.6%)`;
       el.style.setProperty('--col-offset', dx);
       el.style.setProperty('--row-offset', dy);
       el.style.setProperty('--token-scale', scale);
@@ -703,26 +774,12 @@ el.style.top = `calc(${finalRow} * 6.6667% - 3.6%)`;
 /*************************************************************
  * 7. LOBBY STATE CONTROLLER & TEAM SYSTEM HELPERS
  *************************************************************/
-function areTeammates(p1, p2) {
-  if (!isTeamMode) return false;
-  return (p1 === 'red' && p2 === 'yellow') ||
-         (p1 === 'yellow' && p2 === 'red') ||
-         (p1 === 'green' && p2 === 'blue') ||
-         (p1 === 'blue' && p2 === 'green');
-}
-
-function getTeammate(player) {
-  if (player === 'red') return 'yellow';
-  if (player === 'yellow') return 'red';
-  if (player === 'green') return 'blue';
-  if (player === 'blue') return 'green';
-  return null;
-}
-
 function goToLobby() {
   playSound('click');
   document.getElementById('splash-screen').classList.add('hidden');
   document.getElementById('home-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'lobby' }, '');
 }
 
 function startLobbyGame() {
@@ -734,8 +791,33 @@ function startLobbyGame() {
   if (playerSettings.yellow !== 'off') activeOrder.push('yellow');
   if (playerSettings.blue !== 'off') activeOrder.push('blue');
   
+  isTournamentActive = false;
   document.getElementById('home-screen').classList.add('hidden');
   document.getElementById('game-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'game' }, '');
+  
+  restartGame();
+}
+
+function startTournamentSetup() {
+  playSound('click');
+  saveLastConfig();
+  activeOrder = ['red', 'green', 'yellow', 'blue'];
+  
+  isTournamentActive = true;
+  tournamentRound = 1;
+  tournamentScores = { red: 0, green: 0, yellow: 0, blue: 0 };
+  tournamentPlacements = [];
+  isTeamMode = false;
+
+  resetBotAIState();
+
+  document.getElementById('home-screen').classList.add('hidden');
+  document.getElementById('game-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'game' }, '');
+  
   restartGame();
 }
 
@@ -743,15 +825,23 @@ function restartGame() {
   winners.length = 0;
   currentTurnIndex = 0;
   currentPlayer = activeOrder[0];
+  isGameRunning = true;
+  currentMatchTurns = 0;
   
+  resetBotAIState();
+
   activeOrder.forEach(player => {
     tokens[player] = [{ pos: 0 }, { pos: 0 }, { pos: 0 }, { pos: 0 }];
     captureCounts[player] = 0;
     powerCharges[player] = 0;
+    bonusPoints[player] = 0;
+    currentMatchCaptures[player] = 0;
+    currentMatchMaxSixes[player] = 0;
   });
   
   nextRollForcedValue = null;
   activePowerSelected = null;
+  activeBonusSelected = null;
   
   document.querySelectorAll('.yard').forEach(yard => yard.style.opacity = '0.08');
   activeOrder.forEach(player => {
@@ -761,10 +851,16 @@ function restartGame() {
 
   const badge = document.getElementById('team-status-indicator');
   if (badge) {
-    badge.innerText = isTeamMode ? "TEAM MATCH (Red+Yellow vs Green+Blue)" : "SOLO MATCH";
+    if (isTournamentActive) {
+      badge.innerText = `🏆 TOURNAMENT (Round ${tournamentRound}/3)`;
+    } else {
+      badge.innerText = isTeamMode ? "TEAM MATCH (Red+Yellow vs Green+Blue)" : "SOLO MATCH";
+    }
   }
 
   document.getElementById('podium-modal').classList.add('hidden');
+  document.getElementById('tournament-summary-modal').classList.add('hidden');
+  
   generateGridCells();
   generateTokenElements();
   updateTokenPositions();
@@ -773,21 +869,31 @@ function restartGame() {
 }
 
 function setTurnState(player) {
+  if (!isGameRunning) return;
+
   currentPlayer = player;
   diceRolled = false;
   activePowerSelected = null;
+  activeBonusSelected = null;
   
   document.querySelectorAll('.yard').forEach(yard => yard.classList.remove('active-turn-glow'));
   const activeYard = document.getElementById(`yard-${player}`);
   if (activeYard) activeYard.classList.add('active-turn-glow');
 
-  document.querySelectorAll('.floating-dice').forEach(dice => dice.classList.remove('active-turn'));
+  document.querySelectorAll('.floating-dice').forEach(dice => {
+    dice.classList.remove('active-turn');
+    dice.onpointerdown = null;
+  });
+
   const activeDice = document.getElementById(`dice-${player}`);
-  if (activeDice) activeDice.classList.add('active-turn');
+  if (activeDice) {
+    activeDice.classList.add('active-turn');
+    bindInstantTap(activeDice, () => onDiceTriggered(player));
+  }
 
   updatePowerHubUI();
+  updateBonusPointsUI();
 
-  // যদি চালটি কোনো মানব খেলোয়াড়ের (Human) হয়, তবে তাকে সচেতন করতে হালকা চিম বাজবে
   if (playerSettings[player] === 'human') {
     playSound('turn');
   }
@@ -828,6 +934,10 @@ function getPlayableTokens(player, roll) {
   return list;
 }
 
+function isBotPlayer(player) {
+  return playerSettings[player] === 'bot';
+}
+
 /*************************************************************
  * 8. DICE ROLL HANDLERS
  *************************************************************/
@@ -837,10 +947,16 @@ function onDiceTriggered(player) {
     mpSendAction('dice', { player });
     return;
   }
-  if (player !== currentPlayer || diceRolled || isMoving) return;
+  if (player !== currentPlayer || diceRolled || isMoving || !isGameRunning) return;
+
+  activeBonusSelected = null;
+  activePowerSelected = null;
+  clearHighlighting();
+
   triggerHaptic('tap');
   playSound('roll');
   diceRolled = true;
+  currentMatchTurns++;
   
   if (nextRollForcedValue !== null) {
     diceValue = nextRollForcedValue;
@@ -864,12 +980,17 @@ function onDiceTriggered(player) {
 }
 
 function evaluateRollResult() {
+  if (!isGameRunning) return;
+
   if (diceValue === 6) {
-    playSound('six'); // ডাইসে ৬ উঠলে প্রিমিয়াম লাকি বেল বাজবে
+    playSound('six');
     consecutiveSixes++;
+    
+    currentMatchMaxSixes[currentPlayer] = Math.max(currentMatchMaxSixes[currentPlayer], consecutiveSixes);
+    
     if (consecutiveSixes === 3) {
       consecutiveSixes = 0;
-      playSound('error'); // ৩ বার ছক্কা পড়লে এরর সাউন্ড বাজবে
+      playSound('error');
       showNotification("💥 OVERLIMIT", `${PLAYER_CONFIGS[currentPlayer].name} rolled 3 consecutive sixes! Turn skipped.`, "red");
       setTimeout(passTurn, 200);
       return;
@@ -911,127 +1032,84 @@ function clearHighlighting() {
 }
 
 /*************************************************************
- * 9. LUDO INTELLIGENT BOT (AI) SYSTEM — PRO EDITION v2
- * (হিউম্যানাইজড + কৌশলী চৌকস সংস্করণ)
- *
- * এই ফাইলটি v1 (ludo-bot-ai-pro.js)-এর সম্পূর্ণ প্রতিস্থাপন।
- * বাইরের কল-সিগনেচার অপরিবর্তিত: executeBotTurn,
- * executeBotPowerUsage, executeBotPawnSelection,
- * simulateTargetCoordinates, getGamePhase, getTurnDistance,
- * setBotDifficulty — কোডবেসের বাকি অংশে কিছু বদলাতে হবে না।
- *
- * ==================== ⚠️ নতুন ইন্টিগ্রেশন হুক ====================
- * হিউম্যানাইজেশনের জন্য দুটো নতুন ফাংশন আপনার capture-handling
- * কোড থেকে কল করতে হবে (এই ফাইলে সেই লজিক নেই, কারণ ক্যাপচার
- * ইভেন্ট আপনার মূল গেম-ইঞ্জিনে ঘটে):
- *
- *   • যখন একটি বট প্রতিপক্ষকে ক্যাপচার করে:
- *       onBotCapturedOpponent(capturingPlayer);
- *
- *   • যখন একটি বটের টোকেন ক্যাপচার হয়ে যায়:
- *       onBotWasCaptured(capturedPlayer);
- *
- *   • নতুন ম্যাচ শুরু হলে (personality/momentum রিসেট করতে):
- *       resetBotAIState();
- *
- * এই তিনটে কল যোগ করলে momentum system সম্পূর্ণ সক্রিয় হবে।
- * না যোগ করলেও বাকি সব ফিচার (personality, leader-targeting,
- * calculated risk, thinking delay) স্বাভাবিকভাবেই কাজ করবে।
- * ===================================================================
+ * 9. LUDO INTELLIGENT BOT (AI) SYSTEM — 4 LEVELS
  *************************************************************/
-
-/*=============================================================
- * 9.0 DIFFICULTY PRESETS & WEIGHT CONFIGURATION
- *============================================================*/
 const AI_DIFFICULTY_PRESETS = {
   easy: {
-    captureBase: 1000, captureProgressFactor: 8,
-    captureNearHomeThreshold: 45, captureNearHomeBonus: 400,
-    leaderPressureBonus: 150,
-
-    threatBase: 150, threatTurnDist1Bonus: 70, threatTurnDist2Bonus: 35,
-    threatPosFactor: 3,
-
-    safetyBase: 300, safetyEscapeBonus: 500,
-
-    sixEarlyBase: 700, sixEarlyDecay: 150,
-    sixMidBase: 500, sixMidDecay: 100,
-    sixLateBase: 250,
-
-    progMultEarly: 1.0, progMultMid: 1.6, progMultLate: 2.6,
-    homeStretchBonus: 100,
-
-    finishScore: 2200,
-
-    stackSafeMult: 150, stackUnsafeMult: 100, spreadBonus: 30,
-
-    teamGuardSafe: 100, teamGuardUnsafe: 60, teamSaveBonus: 400,
-
-    futureSafeBonus: 80, futureCaptureBonus: 200, futureThreatPenaltyFactor: 150,
-
-    mistakeChance: 0.32, mistakeAbsThreshold: 100, mistakeRatioThreshold: 0.22,
-
-    lookAheadDepth: 1, counterRiskWeight: 0, riskTolerance: 0
+    captureBase: 200, captureProgressFactor: 2,
+    captureNearHomeThreshold: 45, captureNearHomeBonus: 50,
+    leaderPressureBonus: 30,
+    threatBase: 30, threatTurnDist1Bonus: 10, threatTurnDist2Bonus: 5,
+    threatPosFactor: 1,
+    safetyBase: 50, safetyEscapeBonus: 100,
+    sixEarlyBase: 300, sixEarlyDecay: 50,
+    sixMidBase: 150, sixMidDecay: 20,
+    sixLateBase: 100,
+    progMultEarly: 0.8, progMultMid: 1.0, progMultLate: 1.2,
+    homeStretchBonus: 30,
+    finishScore: 1000,
+    stackSafeMult: 50, stackUnsafeMult: 30, spreadBonus: 10,
+    teamGuardSafe: 30, teamGuardUnsafe: 10, teamSaveBonus: 100,
+    futureSafeBonus: 20, futureCaptureBonus: 50, futureThreatPenaltyFactor: 30,
+    lookAheadDepth: 1, counterRiskWeight: 0, riskTolerance: 0,
+    mistakeChance: 0.65, mistakeAbsThreshold: 300, mistakeRatioThreshold: 0.45
   },
-
   medium: {
     captureBase: 1600, captureProgressFactor: 10,
     captureNearHomeThreshold: 45, captureNearHomeBonus: 700,
     leaderPressureBonus: 250,
-
     threatBase: 280, threatTurnDist1Bonus: 180, threatTurnDist2Bonus: 90,
     threatPosFactor: 5,
-
     safetyBase: 450, safetyEscapeBonus: 850,
-
     sixEarlyBase: 1050, sixEarlyDecay: 200,
     sixMidBase: 750, sixMidDecay: 120,
     sixLateBase: 350,
-
     progMultEarly: 1.4, progMultMid: 2.5, progMultLate: 4.2,
     homeStretchBonus: 180,
-
     finishScore: 2800,
-
     stackSafeMult: 250, stackUnsafeMult: 200, spreadBonus: 60,
-
     teamGuardSafe: 180, teamGuardUnsafe: 120, teamSaveBonus: 750,
-
     futureSafeBonus: 160, futureCaptureBonus: 350, futureThreatPenaltyFactor: 200,
-
-    mistakeChance: 0.15, mistakeAbsThreshold: 60, mistakeRatioThreshold: 0.10,
-
-    lookAheadDepth: 1, counterRiskWeight: 0, riskTolerance: 0.1
+    lookAheadDepth: 1, counterRiskWeight: 0, riskTolerance: 0.1,
+    mistakeChance: 0.15, mistakeAbsThreshold: 60, mistakeRatioThreshold: 0.10
   },
-
   hard: {
     captureBase: 1750, captureProgressFactor: 12,
     captureNearHomeThreshold: 45, captureNearHomeBonus: 800,
     leaderPressureBonus: 400,
-
     threatBase: 320, threatTurnDist1Bonus: 220, threatTurnDist2Bonus: 110,
     threatPosFactor: 6,
-
     safetyBase: 480, safetyEscapeBonus: 900,
-
     sixEarlyBase: 1100, sixEarlyDecay: 220,
     sixMidBase: 800, sixMidDecay: 130,
     sixLateBase: 380,
-
     progMultEarly: 1.5, progMultMid: 2.7, progMultLate: 4.6,
     homeStretchBonus: 220,
-
     finishScore: 3000,
-
     stackSafeMult: 280, stackUnsafeMult: 240, spreadBonus: 70,
-
     teamGuardSafe: 200, teamGuardUnsafe: 140, teamSaveBonus: 850,
-
     futureSafeBonus: 170, futureCaptureBonus: 400, futureThreatPenaltyFactor: 220,
-
-    mistakeChance: 0.05, mistakeAbsThreshold: 40, mistakeRatioThreshold: 0.06,
-
-    lookAheadDepth: 2, counterRiskWeight: 0.6, riskTolerance: 0.25
+    lookAheadDepth: 2, counterRiskWeight: 0.6, riskTolerance: 0.25,
+    mistakeChance: 0.05, mistakeAbsThreshold: 40, mistakeRatioThreshold: 0.06
+  },
+  expert: {
+    captureBase: 2400, captureProgressFactor: 18,
+    captureNearHomeThreshold: 40, captureNearHomeBonus: 1200,
+    leaderPressureBonus: 700,
+    threatBase: 500, threatTurnDist1Bonus: 350, threatTurnDist2Bonus: 180,
+    threatPosFactor: 9,
+    safetyBase: 650, safetyEscapeBonus: 1400,
+    sixEarlyBase: 1400, sixEarlyDecay: 250,
+    sixMidBase: 950, sixMidDecay: 140,
+    sixLateBase: 450,
+    progMultEarly: 1.8, progMultMid: 3.2, progMultLate: 5.5,
+    homeStretchBonus: 350,
+    finishScore: 4500,
+    stackSafeMult: 400, stackUnsafeMult: 350, spreadBonus: 100,
+    teamGuardSafe: 300, teamGuardUnsafe: 200, teamSaveBonus: 1100,
+    futureSafeBonus: 240, futureCaptureBonus: 550, futureThreatPenaltyFactor: 320,
+    lookAheadDepth: 3, counterRiskWeight: 0.95, riskTolerance: 0.45,
+    mistakeChance: 0.00, mistakeAbsThreshold: 10, mistakeRatioThreshold: 0.01
   }
 };
 
@@ -1040,9 +1118,10 @@ let botDifficulty = 'medium';
 function setBotDifficulty(level) {
   if (AI_DIFFICULTY_PRESETS[level]) {
     botDifficulty = level;
+    const selectEl = document.getElementById('bot-difficulty-select');
+    if (selectEl) selectEl.value = level;
     return true;
   }
-  console.warn(`[Bot AI] অজানা difficulty level: "${level}"।`);
   return false;
 }
 
@@ -1050,13 +1129,6 @@ function getBotWeights() {
   return AI_DIFFICULTY_PRESETS[botDifficulty] || AI_DIFFICULTY_PRESETS.medium;
 }
 
-/*=============================================================
- * 9.0.1 PERSONALITY SYSTEM (হিউম্যানাইজেশন)
- *
- * প্রতিটি বট ম্যাচ শুরুতে একটি এলোমেলো "স্বভাব" পায়, যা তার
- * প্রতিটি সিদ্ধান্তে সামান্য পক্ষপাত যোগ করে — ফলে চারটি বট
- * একই কম্পিউটারের মতো না খেলে, চারজন ভিন্ন মানুষের মতো খেলে।
- *============================================================*/
 const BOT_PERSONALITIES = {
   aggressive:  { captureMult: 1.28, threatMult: 0.82, safetyMult: 0.85, teamSaveMult: 0.95, mistakeMult: 0.85 },
   defensive:   { captureMult: 0.82, threatMult: 1.30, safetyMult: 1.25, teamSaveMult: 1.15, mistakeMult: 1.05 },
@@ -1064,7 +1136,7 @@ const BOT_PERSONALITIES = {
   balanced:    { captureMult: 1.00, threatMult: 1.00, safetyMult: 1.00, teamSaveMult: 1.00, mistakeMult: 1.00 }
 };
 
-let botPersonalities = {}; // { playerId: 'aggressive' | 'defensive' | ... }
+let botPersonalities = {};
 
 function getBotPersonality(player) {
   if (!botPersonalities[player]) {
@@ -1074,32 +1146,18 @@ function getBotPersonality(player) {
   return BOT_PERSONALITIES[botPersonalities[player]];
 }
 
-/** ডিবাগ/UI প্রদর্শনের জন্য — বটের স্বভাবের নাম রিটার্ন করে */
-function getBotPersonalityName(player) {
-  return botPersonalities[player] || null;
-}
-
-/*=============================================================
- * 9.0.2 MOMENTUM / EMOTIONAL STATE (হিউম্যানাইজেশন)
- *
- * বট সাম্প্রতিক ঘটনার ওপর ভিত্তি করে সাময়িকভাবে বেশি সাহসী বা
- * বেশি সতর্ক হয়ে ওঠে — ঠিক মানুষের মতো। প্রতি টার্নে ধীরে ধীরে
- * এই প্রভাব হ্রাস পায় (decay)।
- *============================================================*/
-let botMomentum = {}; // { playerId: { confidence, caution } }
+let botMomentum = {};
 
 function _initMomentum(player) {
   if (!botMomentum[player]) botMomentum[player] = { confidence: 0, caution: 0 };
 }
 
-/** কল করুন: বট যখন প্রতিপক্ষকে ক্যাপচার করে */
 function onBotCapturedOpponent(player) {
   _initMomentum(player);
   botMomentum[player].confidence = Math.min(botMomentum[player].confidence + 1, 3);
   botMomentum[player].caution = Math.max(botMomentum[player].caution - 0.5, 0);
 }
 
-/** কল করুন: বটের টোকেন ক্যাপচার হয়ে গেলে */
 function onBotWasCaptured(player) {
   _initMomentum(player);
   botMomentum[player].caution = Math.min(botMomentum[player].caution + 1, 3);
@@ -1113,18 +1171,12 @@ function _decayMomentum(player) {
   if (m.caution > 0) m.caution = Math.max(0, m.caution - 0.25);
 }
 
-/** নতুন ম্যাচ শুরুর সময় কল করুন — personality ও momentum রিসেট হবে */
 function resetBotAIState() {
   botPersonalities = {};
   botMomentum = {};
   _simCoordCache.clear();
 }
 
-/*=============================================================
- * 9.0.3 EFFECTIVE WEIGHTS — Difficulty + Personality + Momentum
- * মিলিয়ে প্রতিটি সিদ্ধান্তের জন্য একটি তাজা, নিরাপদ weight object
- * তৈরি করে (মূল প্রিসেট কখনো mutate হয় না)।
- *============================================================*/
 function getEffectiveWeights(player) {
   const base = getBotWeights();
   const personality = getBotPersonality(player);
@@ -1139,25 +1191,18 @@ function getEffectiveWeights(player) {
     captureBase: base.captureBase * personality.captureMult * confidenceFactor,
     captureProgressFactor: base.captureProgressFactor * personality.captureMult,
     leaderPressureBonus: base.leaderPressureBonus * personality.captureMult,
-
     threatBase: base.threatBase * personality.threatMult * cautionFactor,
     threatTurnDist1Bonus: base.threatTurnDist1Bonus * personality.threatMult * cautionFactor,
     threatTurnDist2Bonus: base.threatTurnDist2Bonus * personality.threatMult * cautionFactor,
-
     safetyBase: base.safetyBase * personality.safetyMult * cautionFactor,
     safetyEscapeBonus: base.safetyEscapeBonus * personality.safetyMult * cautionFactor,
-
     teamSaveBonus: base.teamSaveBonus * personality.teamSaveMult,
-
     mistakeChance: Math.max(0.02, Math.min(0.5,
       base.mistakeChance * personality.mistakeMult * (1 - momentum.confidence * 0.05 + momentum.caution * 0.05)
     ))
   };
 }
 
-/*=============================================================
- * 9.1 ADAPTIVE PLAY STYLE & LOBBY HELPERS
- *============================================================*/
 function getGamePhase(player) {
   const positions = tokens[player].map(t => t.pos);
   const totalProgress = positions.reduce((sum, p) => sum + p, 0);
@@ -1176,9 +1221,6 @@ function getTurnDistance(fromPlayer, toPlayer) {
   return (toIdx - fromIdx + activeOrder.length) % activeOrder.length;
 }
 
-/*=============================================================
- * 9.2 SPATIAL COORDINATE EMULATOR + PER-TURN CACHE
- *============================================================*/
 let _simCoordCache = new Map();
 
 function _resetSimCache() {
@@ -1203,11 +1245,6 @@ function simulateTargetCoordinates(player, tokenIdx, targetPos) {
   return result;
 }
 
-/*=============================================================
- * 9.3 MODULAR DECISION ENGINE EVALUATORS (Weight-Driven)
- *============================================================*/
-
-// ১. Capture Evaluation
 function evaluateCapture(player, targetPlayer, idx, targetCoord, targetPos, phase, w) {
   if (isCoordinateSafe(targetCoord[0], targetCoord[1])) return 0;
 
@@ -1231,7 +1268,6 @@ function evaluateCapture(player, targetPlayer, idx, targetCoord, targetPos, phas
   return score;
 }
 
-// ২. Threat Analysis
 function evaluateThreat(player, targetPlayer, idx, targetCoord, targetPos, w) {
   if (isCoordinateSafe(targetCoord[0], targetCoord[1])) return 0;
 
@@ -1258,7 +1294,6 @@ function evaluateThreat(player, targetPlayer, idx, targetCoord, targetPos, w) {
   return -totalPenalty;
 }
 
-// ৩. Safety Evaluation
 function evaluateSafety(player, targetPlayer, idx, targetCoord, currentPos, targetPos, w) {
   let safetyScore = 0;
   const isCurrentlySafe = currentPos === 0 || isCoordinateSafe(getTokenCoordinates(targetPlayer, idx)[0], getTokenCoordinates(targetPlayer, idx)[1]);
@@ -1273,7 +1308,6 @@ function evaluateSafety(player, targetPlayer, idx, targetCoord, currentPos, targ
   return safetyScore;
 }
 
-// ৪. Adaptive Progress Evaluation
 function evaluateProgress(player, targetPlayer, idx, currentPos, targetPos, phase, roll, w) {
   let progressScore = 0;
 
@@ -1299,13 +1333,11 @@ function evaluateProgress(player, targetPlayer, idx, currentPos, targetPos, phas
   return progressScore;
 }
 
-// ৫. Finish Priority
 function evaluateFinish(player, targetPlayer, idx, targetPos, w) {
   if (targetPos === 57) return w.finishScore;
   return 0;
 }
 
-// ৬. Distribution & Board Control Strategy
 function evaluateDistribution(player, targetPlayer, idx, targetCoord, w) {
   let score = 0;
   const isTargetSafe = isCoordinateSafe(targetCoord[0], targetCoord[1]);
@@ -1326,7 +1358,6 @@ function evaluateDistribution(player, targetPlayer, idx, targetCoord, w) {
   return score;
 }
 
-// ৭. Team Mode Intelligence
 function evaluateTeam(player, targetPlayer, idx, targetCoord, targetPos, w) {
   if (!isTeamMode) return 0;
 
@@ -1372,7 +1403,6 @@ function evaluateTeam(player, targetPlayer, idx, targetCoord, targetPos, w) {
   return teamScore;
 }
 
-// ৮. Look-Ahead Decision System (১ চাল)
 function evaluateFuture(player, targetPlayer, idx, targetPos, phase, w) {
   if (targetPos >= 52) return 0;
 
@@ -1410,7 +1440,6 @@ function evaluateFuture(player, targetPlayer, idx, targetPos, phase, w) {
   return Math.round(futureExpectancy / 6);
 }
 
-// ৯. Counter-Risk (2-Ply Look-Ahead) — শুধুমাত্র 'hard' মোডে সক্রিয়
 function evaluateCounterRisk(player, targetPlayer, idx, targetPos, targetCoord, w) {
   if (w.lookAheadDepth < 2) return 0;
   if (targetPos >= 52) return 0;
@@ -1434,12 +1463,6 @@ function evaluateCounterRisk(player, targetPlayer, idx, targetPos, targetCoord, 
   return -Math.round(maxCounterValue * w.counterRiskWeight);
 }
 
-// ১০. NEW — Leader Pressure (কৌশলী চৌকসতা: এগিয়ে থাকা প্রতিপক্ষকে টার্গেট করা)
-/**
- * যে প্রতিপক্ষের সামগ্রিক অগ্রগতি (progress) সবচেয়ে বেশি, তাকে
- * ক্যাপচার করার সুযোগ পেলে বাড়তি অগ্রাধিকার দেয় — যাতে খেলা
- * এক প্রতিপক্ষের একচেটিয়া জয়ের দিকে না চলে যায় (catch-up logic)।
- */
 function evaluateLeaderPressure(player, targetPlayer, idx, targetCoord, targetPos, w) {
   if (isCoordinateSafe(targetCoord[0], targetCoord[1])) return 0;
 
@@ -1469,20 +1492,21 @@ function evaluateLeaderPressure(player, targetPlayer, idx, targetCoord, targetPo
   return bonus;
 }
 
-/*=============================================================
- * 9.4 INTELLIGENT CORE DECISION EXECUTION
- *============================================================*/
-
 function executeBotTurn() {
+  if (!isGameRunning) return;
   if (winners.length > 0 && (isTeamMode || winners.length >= activeOrder.length - 1)) return;
 
-  setTimeout(() => {
+  botActionTimeoutId = setTimeout(() => {
     _resetSimCache();
     _decayMomentum(currentPlayer);
+
+    const usedBonus = executeBotBonusUsage();
+    if (usedBonus) return;
+
     const usedPower = executeBotPowerUsage();
     if (usedPower) {
       if (nextRollForcedValue === 6) {
-        setTimeout(() => onDiceTriggered(currentPlayer), 300);
+        botActionTimeoutId = setTimeout(() => onDiceTriggered(currentPlayer), 300);
       }
     } else {
       onDiceTriggered(currentPlayer);
@@ -1490,9 +1514,8 @@ function executeBotTurn() {
   }, 350 + Math.random() * 200);
 }
 
-// Power Usage Logic
 function executeBotPowerUsage() {
-  if (powerCharges[currentPlayer] <= 0 || isMoving) return false;
+  if (powerCharges[currentPlayer] <= 0 || isMoving || !isGameRunning) return false;
 
   const w = getEffectiveWeights(currentPlayer);
   let targetPlayer = currentPlayer;
@@ -1504,7 +1527,6 @@ function executeBotPowerUsage() {
   const yardCount = tokens[targetPlayer].filter(t => t.pos === 0).length;
   const activeCount = tokens[targetPlayer].filter(t => t.pos > 0 && t.pos < 57).length;
 
-  // ১. ফোর্স সিক্স
   if (yardCount > 0 && (activeCount === 0 || yardCount >= 2 || phase === 'early')) {
     const startCellCoord = simulateTargetCoordinates(targetPlayer, tokens[targetPlayer].findIndex(t => t.pos === 0), 1);
     if (startCellCoord) {
@@ -1516,7 +1538,6 @@ function executeBotPowerUsage() {
     }
   }
 
-  // ২. এজিস টেলিপোর্ট
   for (let i = 0; i < 4; i++) {
     const pos = tokens[targetPlayer][i].pos;
     if (pos > 25 && pos < 52 && isTokenCurrentlyThreatened(targetPlayer, i)) {
@@ -1525,14 +1546,13 @@ function executeBotPowerUsage() {
         const jumpDistance = nextSafePos - pos;
         if (jumpDistance >= 3 || pos >= 40) {
           activatePower('aegis_teleport');
-          setTimeout(() => onTokenTapped(currentPlayer, i), 300);
+          botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, i), 300);
           return true;
         }
       }
     }
   }
 
-  // ৩. সুইফ্ট লিপ
   for (let i = 0; i < 4; i++) {
     const pos = tokens[targetPlayer][i].pos;
     if (pos > 0 && pos + 6 <= 57) {
@@ -1544,7 +1564,7 @@ function executeBotPowerUsage() {
 
       if (pos + 6 === 57) {
         activatePower('swift_leap');
-        setTimeout(() => onTokenTapped(currentPlayer, i), 300);
+        botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, i), 300);
         return true;
       }
 
@@ -1565,13 +1585,13 @@ function executeBotPowerUsage() {
 
       if (canLeapCapture) {
         activatePower('swift_leap');
-        setTimeout(() => onTokenTapped(currentPlayer, i), 300);
+        botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, i), 300);
         return true;
       }
 
       if (isCurrentlyThreatened && isTargetSafe) {
         activatePower('swift_leap');
-        setTimeout(() => onTokenTapped(currentPlayer, i), 300);
+        botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, i), 300);
         return true;
       }
     }
@@ -1580,7 +1600,6 @@ function executeBotPowerUsage() {
   return false;
 }
 
-// Pawn Selection — হিউম্যানাইজড + কৌশলী চৌকস সংস্করণ
 function executeBotPawnSelection(choices) {
   _resetSimCache();
   const w = getEffectiveWeights(currentPlayer);
@@ -1612,8 +1631,6 @@ function executeBotPawnSelection(choices) {
     const future = evaluateFuture(currentPlayer, targetPlayer, idx, targetPos, phase, w);
     let counterRisk = evaluateCounterRisk(currentPlayer, targetPlayer, idx, targetPos, targetCoord, w);
 
-    // ★ Calculated Risk-Taking: বড় পুরস্কার (ক্যাপচার/ফিনিশ/লিডার-টার্গেট)
-    // থাকলে ঝুঁকির পেনাল্টি সামান্য ছাড় পায় — মানুষের মতো "সাহসী কিন্তু হিসেবি" সিদ্ধান্ত
     const rewardSignal = capture + finish + leaderPressure;
     if (rewardSignal > 0 && w.riskTolerance > 0) {
       const discount = Math.min(0.6, w.riskTolerance * (rewardSignal / 1000));
@@ -1629,7 +1646,6 @@ function executeBotPawnSelection(choices) {
 
   scoredChoices.sort((a, b) => b.score - a.score);
 
-  // Human-like Decision Making (personality/momentum-aware mistake rate)
   let selectedIndex = scoredChoices[0].index;
   if (scoredChoices.length > 1) {
     const best = scoredChoices[0];
@@ -1643,19 +1659,15 @@ function executeBotPawnSelection(choices) {
     }
   }
 
-  // ★ Variable Thinking Delay: কঠিন/কাছাকাছি সিদ্ধান্তে বেশি সময়, সহজ চালে দ্রুত
   const delay = _computeThinkingDelay(scoredChoices);
-  setTimeout(() => onTokenTapped(currentPlayer, selectedIndex), delay);
+  botActionTimeoutId = setTimeout(() => {
+    if (isGameRunning) onTokenTapped(currentPlayer, selectedIndex);
+  }, delay);
 }
 
-/**
- * সিদ্ধান্তের জটিলতা অনুযায়ী "চিন্তার বিরতি" হিসাব করে।
- * সেরা ও দ্বিতীয়-সেরা চালের স্কোর যত কাছাকাছি, বট তত বেশি
- * "দ্বিধায়" পড়ে — ঠিক মানুষের মতো।
- */
 function _computeThinkingDelay(scoredChoices) {
   if (scoredChoices.length <= 1) {
-    return 250 + Math.random() * 200; // একটাই অপশন, দ্রুত চাল
+    return 250 + Math.random() * 200;
   }
   const diff = Math.abs(scoredChoices[0].score - scoredChoices[1].score);
   const hesitation = Math.max(0, 850 - diff * 3);
@@ -1669,7 +1681,7 @@ async function animateCapture(opp, tokenIdx) {
   const el = document.getElementById(`token-${opp}-${tokenIdx}`);
   if (!el) return;
   
-  playSound('sad'); // টোকেন মার খাওয়ার হতাশাজনক সুরটি এখানে শুরুতে একবার বাজবে
+  playSound('sad');
   el.classList.add('capturing');
   const startPos = tokens[opp][tokenIdx].pos;
   const stepDelay = Math.max(100, Math.min(200, 240 / startPos));
@@ -1682,13 +1694,137 @@ async function animateCapture(opp, tokenIdx) {
   el.classList.remove('capturing');
 }
 
+// Token pointer event with long press preview integrated
+let activePreviewCell = null;
+let longPressTimer = null;
+let touchStartedX = 0;
+let touchStartedY = 0;
+let isLongPressActive = false;
+
+function setupTokenTouchEvents(tokenEl, player, idx) {
+  tokenEl.addEventListener('pointerdown', (e) => {
+    if (player !== currentPlayer || isMoving || !isGameRunning) return;
+    
+    isLongPressActive = false;
+    touchStartedX = e.clientX;
+    touchStartedY = e.clientY;
+    
+    longPressTimer = setTimeout(() => {
+      isLongPressActive = true;
+      triggerHaptic('tap');
+      showTokenPreview(player, idx);
+    }, 400);
+  });
+
+  tokenEl.addEventListener('pointermove', (e) => {
+    if (longPressTimer) {
+      if (Math.abs(e.clientX - touchStartedX) > 10 || Math.abs(e.clientY - touchStartedY) > 10) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        clearTokenPreview();
+      }
+    }
+  });
+
+  tokenEl.addEventListener('pointerup', (e) => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    
+    if (isLongPressActive) {
+      clearTokenPreview();
+      isLongPressActive = false;
+    } else {
+      onTokenTapped(player, idx);
+    }
+  });
+
+  tokenEl.addEventListener('pointercancel', () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    clearTokenPreview();
+    isLongPressActive = false;
+  });
+}
+
+function showTokenPreview(player, idx) {
+  let targetPlayer = player;
+  if (isTeamMode && checkPlayerFinish(player)) {
+    targetPlayer = getTeammate(player);
+  }
+
+  const currentPos = tokens[targetPlayer][idx].pos;
+  let targetPos = 0;
+
+  if (activeBonusSelected) {
+    targetPos = currentPos + activeBonusSelected;
+  } else if (activePowerSelected === 'swift_leap') {
+    targetPos = currentPos + 6;
+  } else if (activePowerSelected === 'aegis_teleport') {
+    const safeZonePos = getNearestSafeZonePos(targetPlayer, idx);
+    if (safeZonePos !== null) targetPos = safeZonePos;
+  } else {
+    if (!diceRolled) return;
+    targetPos = currentPos === 0 ? (diceValue === 6 ? 1 : 0) : currentPos + diceValue;
+  }
+
+  if (targetPos <= 0 || targetPos > 57) return;
+
+  const coord = simulateTargetCoordinates(targetPlayer, idx, targetPos);
+  if (!coord) return;
+
+  const cellEl = findCellElement(coord[0], coord[1]);
+  if (!cellEl) return;
+
+  activePreviewCell = cellEl;
+
+  if (isCoordinateSafe(coord[0], coord[1])) {
+    cellEl.classList.add('preview-safe-highlight');
+  } else {
+    let opponentExists = false;
+    activeOrder.forEach(opp => {
+      if (opp === player || areTeammates(player, opp)) return;
+      tokens[opp].forEach(oppT => {
+        if (oppT.pos > 0 && oppT.pos < 57) {
+          const oppCoord = getTokenCoordinates(opp, tokens[opp].indexOf(oppT));
+          if (oppCoord[0] === coord[0] && oppCoord[1] === coord[1]) {
+            opponentExists = true;
+          }
+        }
+      });
+    });
+
+    if (opponentExists) {
+      cellEl.classList.add('preview-capture-highlight');
+    } else {
+      cellEl.classList.add('preview-highlight');
+    }
+  }
+}
+
+function clearTokenPreview() {
+  if (activePreviewCell) {
+    activePreviewCell.classList.remove('preview-highlight', 'preview-safe-highlight', 'preview-capture-highlight');
+    activePreviewCell = null;
+  }
+}
+
+function findCellElement(col, row) {
+  const targetCol = Math.floor(col);
+  const targetRow = Math.floor(row);
+  return document.querySelector(`.cell[data-col="${targetCol}"][data-row="${targetRow}"]`);
+}
+
 async function onTokenTapped(player, idx) {
   if (mpIsActive && !mpIsHost) {
     mpSendAction('token', { player, idx });
     return;
   }
-  if (player !== currentPlayer || isMoving) {
-    playSound('error'); // নিজের চাল না হওয়া সত্ত্বেও গুটি ট্যাপ করলে এরর সাউন্ড দেবে
+  
+  if (player !== currentPlayer || isMoving || !isGameRunning) {
     return;
   }
   
@@ -1697,7 +1833,41 @@ async function onTokenTapped(player, idx) {
     targetPlayer = getTeammate(player);
   }
 
-  // অ্যাক্টিভ কসমিক পাওয়ার মুভমেন্ট হ্যান্ডেলিং
+  // Handle active Bonus Points movement
+  if (activeBonusSelected) {
+    const tokenObj = tokens[targetPlayer][idx];
+    const legalBonusChoices = getPlayableBonusTokens(player, activeBonusSelected);
+    
+    if (!legalBonusChoices.includes(idx)) {
+      return;
+    }
+
+    playSound('click');
+    bonusPoints[player] -= activeBonusSelected;
+    const stepsToMove = activeBonusSelected;
+    activeBonusSelected = null;
+    clearHighlighting();
+    isMoving = true;
+
+    const el = document.getElementById(`token-${targetPlayer}-${idx}`);
+    const totalSteps = tokenObj.pos + stepsToMove;
+
+    for (let s = tokenObj.pos + 1; s <= totalSteps; s++) {
+      tokenObj.pos = s;
+      updateTokenPositions();
+      playSound('hop');
+      triggerHaptic('tap');
+      if (el) el.classList.add('hopping');
+      await delay(160);
+      if (el) el.classList.remove('hopping');
+    }
+
+    isMoving = false;
+    await evaluateStepLanding(player, idx, true);
+    return;
+  }
+
+  // Cosmic Special Movement Taps
   if (activePowerSelected) {
     const tokenObj = tokens[targetPlayer][idx];
     
@@ -1755,14 +1925,11 @@ async function onTokenTapped(player, idx) {
     }
   }
 
-  // সাধারণ স্ট্যান্ডার্ড টার্ন মুভমেন্ট
   if (!diceRolled) {
-    playSound('error'); // ডাইস না রোল করে সরাসরি গুটি ট্যাপ করলে এরর সাউন্ড দেবে
     return;
   }
   const legalChoices = getPlayableTokens(player, diceValue);
   if (!legalChoices.includes(idx)) {
-    playSound('error'); // অচল বা অবৈধ গুটি ট্যাপ করলে এরর সাউন্ড দেবে
     return;
   }
   
@@ -1797,7 +1964,7 @@ async function onTokenTapped(player, idx) {
   await evaluateStepLanding(player, idx);
 }
 
-async function evaluateStepLanding(player, idx) {
+async function evaluateStepLanding(player, idx, isBonusMove = false) {
   let targetPlayer = player;
   if (isTeamMode && checkPlayerFinish(player)) {
     targetPlayer = getTeammate(player);
@@ -1811,7 +1978,7 @@ async function evaluateStepLanding(player, idx) {
   if (!isSafe) {
     const toCapture = [];
     activeOrder.forEach(opp => {
-      if (opp === player || areTeammates(player, opp)) return; // টিমমেট হলে কাটবে না
+      if (opp === player || areTeammates(player, opp)) return;
       for (let i = 0; i < 4; i++) {
         if (tokens[opp][i].pos > 0 && tokens[opp][i].pos < 57) {
           const oppCoord = getTokenCoordinates(opp, i);
@@ -1830,22 +1997,32 @@ async function evaluateStepLanding(player, idx) {
       
       for (const item of toCapture) {
         await animateCapture(item.opp, item.i);
+        bonusPoints[item.opp] = Math.max(0, (bonusPoints[item.opp] || 0) - 1);
       }
     }
   }
   
-  // কসমিক চার্জ ক্যালকুলেশন
   if (capturedOpponent) {
     captureCounts[player] += capturesAccumulated;
+    currentMatchCaptures[player] += capturesAccumulated;
+    
     if (captureCounts[player] >= 4) {
       const extraCharges = Math.floor(captureCounts[player] / 4);
       powerCharges[player] += extraCharges;
       captureCounts[player] %= 4;
       triggerPowerUpCelebration(player, extraCharges);
     }
+
+    bonusPoints[player] = Math.min(4, (bonusPoints[player] || 0) + capturesAccumulated);
+    
+    if (isBotPlayer(player)) {
+      onBotCapturedOpponent(player);
+    }
     
     updateTokenPositions();
-    setTimeout(() => setTurnState(currentPlayer), 400);
+    setTimeout(() => {
+      if (isGameRunning) setTurnState(currentPlayer);
+    }, 400);
     return;
   }
   
@@ -1864,6 +2041,11 @@ async function evaluateStepLanding(player, idx) {
     } else {
       if (checkPlayerFinish(player)) {
         winners.push(player);
+        
+        if (isTournamentActive && !tournamentPlacements.includes(player)) {
+          tournamentPlacements.push(player);
+        }
+
         if (winners.length >= activeOrder.length - 1) {
           endGame();
           return;
@@ -1871,97 +2053,45 @@ async function evaluateStepLanding(player, idx) {
       }
     }
     
-    setTimeout(() => setTurnState(currentPlayer), 300);
+    setTimeout(() => {
+      if (isGameRunning) setTurnState(currentPlayer);
+    }, 300);
     return;
   }
   
+  if (isBonusMove) {
+    updatePowerHubUI();
+    updateBonusPointsUI();
+    saveMatchState();
+    if (isBotPlayer(currentPlayer)) {
+      executeBotTurn();
+    }
+    return;
+  }
+
   if (diceRolled && diceValue === 6) {
-    setTimeout(() => setTurnState(currentPlayer), 450);
+    setTimeout(() => {
+      if (isGameRunning) setTurnState(currentPlayer);
+    }, 450);
   } else {
     passTurn();
   }
 }
 
-function isCoordinateSafe(col, row) {
-  return SAFE_ZONES.some(s => s[0] === col && s[1] === row);
-}
-
-function countThreats(targetCoord, movingPlayer) {
-  if (isCoordinateSafe(targetCoord[0], targetCoord[1])) return 0;
-  
-  let threatCount = 0;
-  activeOrder.forEach(opp => {
-    if (opp === movingPlayer || areTeammates(movingPlayer, opp)) return;
-    
-    tokens[opp].forEach((oToken, oIdx) => {
-      if (oToken.pos <= 0 || oToken.pos >= 52) return;
-      
-      for (let roll = 1; roll <= 6; roll++) {
-        const futurePos = oToken.pos + roll;
-        const futureCoord = simulateTargetCoordinates(opp, oIdx, futurePos);
-        if (futureCoord && futureCoord[0] === targetCoord[0] && futureCoord[1] === targetCoord[1]) {
-          threatCount++;
-        }
-      }
-    });
-  });
-  
-  return threatCount;
-}
-
-function isTokenCurrentlyThreatened(player, tokenIdx) {
-  const pos = tokens[player][tokenIdx].pos;
-  if (pos <= 0 || pos >= 52) return false;
-  const coord = getTokenCoordinates(player, tokenIdx);
-  return countThreats(coord, player) > 0;
-}
-
-function getNearestSafeZonePos(player, tokenIdx) {
-  const currentPos = tokens[player][tokenIdx].pos;
-  if (currentPos <= 0 || currentPos >= 51) return null;
-  
-  for (let futurePos = currentPos + 1; futurePos <= 51; futurePos++) {
-    const coord = simulateTargetCoordinates(player, tokenIdx, futurePos);
-    if (isCoordinateSafe(coord[0], coord[1])) {
-      return futurePos;
-    }
-  }
-  return null;
-}
-
-function checkPlayerFinish(player) {
-  return tokens[player].every(t => t.pos === 57);
-}
-
-function checkTeamFinish(player) {
-  if (!isTeamMode) return checkPlayerFinish(player);
-  const teammate = getTeammate(player);
-  return checkPlayerFinish(player) && checkPlayerFinish(teammate);
-}
-
-function passTurn() {
-  clearHighlighting();
-  consecutiveSixes = 0;
-  
-  let nextIndex = currentTurnIndex;
-  let iterations = 0;
-  
-  do {
-    nextIndex = (nextIndex + 1) % activeOrder.length;
-    iterations++;
-  } while (checkPlayerFinish(activeOrder[nextIndex]) && (!isTeamMode) && iterations < activeOrder.length);
-  
-  currentTurnIndex = nextIndex;
-  setTurnState(activeOrder[currentTurnIndex]);
-}
-
 /*************************************************************
- * 11. POWER ACTION HUB INTERFACES
+ * 11. POWER & BONUS MOVEMENT ACTIONS HUB INTERFACES (LOCALIZED)
  *************************************************************/
+function triggerPowerUpCelebration(player, extraCharges) {
+  playSound('powerup');
+  triggerHaptic('tap');
+  showNotification("⚡ POWER CHARGED", `${PLAYER_CONFIGS[player].name} earned +${extraCharges} Cosmic Charge!`, "gold");
+}
+
 function activatePower(type) {
   if (powerCharges[currentPlayer] <= 0 || isMoving) return;
   
   playSound('click');
+  activeBonusSelected = null;
   
   let targetPlayer = currentPlayer;
   if (isTeamMode && checkPlayerFinish(currentPlayer)) {
@@ -1973,6 +2103,7 @@ function activatePower(type) {
     nextRollForcedValue = 6;
     showNotification("🎲 COSMIC SIX", "A cosmic roll has been summoned! Next roll will guarantee a 6.", "gold");
     updatePowerHubUI();
+    updateBonusPointsUI();
   } else if (type === 'swift_leap') {
     activePowerSelected = 'swift_leap';
     showNotification("🏃 SWIFT LEAP", "Select one of your active track tokens to leap 6 spaces forward!", "gold");
@@ -1983,6 +2114,8 @@ function activatePower(type) {
       if (pos > 0 && pos + 6 <= 57) indices.push(i);
     }
     highlightPlayableTokens(indices);
+    updatePowerHubUI();
+    updateBonusPointsUI();
   } else if (type === 'aegis_teleport') {
     activePowerSelected = 'aegis_teleport';
     showNotification("🛡️ AEGIS SHIELD", "Select one active track token to warp directly onto the next safe zone!", "gold");
@@ -1992,47 +2125,154 @@ function activatePower(type) {
       if (getNearestSafeZonePos(targetPlayer, i) !== null) indices.push(i);
     }
     highlightPlayableTokens(indices);
+    updatePowerHubUI();
+    updateBonusPointsUI();
   }
 }
 
-function updatePowerHubUI() {
-  const hub = document.getElementById('power-hub');
-  const countSpan = document.getElementById('power-charge-count');
-  const btnSix = document.getElementById('btn-power-six');
-  const btnLeap = document.getElementById('btn-power-leap');
-  const btnAegis = document.getElementById('btn-power-aegis');
-  
-  if (!hub) return;
-  
-  const charges = powerCharges[currentPlayer] || 0;
-  if (countSpan) countSpan.innerText = charges;
-  
-  const isHuman = playerSettings[currentPlayer] === 'human';
-  
-  if (isHuman && (charges > 0 || activePowerSelected)) {
-    hub.classList.remove('hidden');
-    hub.className = `power-hub active-glow active-${currentPlayer}`;
-  } else {
-    hub.classList.add('hidden');
-  }
-
-  if (charges <= 0 && !activePowerSelected) {
-    if (btnSix) btnSix.disabled = true;
-    if (btnLeap) btnLeap.disabled = true;
-    if (btnAegis) btnAegis.disabled = true;
+function activateBonusPoints(points) {
+  if (mpIsActive && !mpIsHost) {
+    mpSendAction('activate_bonus', { points });
     return;
   }
   
+  const currentPoints = bonusPoints[currentPlayer] || 0;
+  if (currentPoints < points || isMoving) return;
+  
+  playSound('click');
+  activePowerSelected = null;
+  
+  if (activeBonusSelected === points) {
+    activeBonusSelected = null;
+    clearHighlighting();
+    showNotification("🎯 BONUS STEPS", "Selection cancelled.", "blue");
+  } else {
+    activeBonusSelected = points;
+    showNotification("🎯 BONUS STEPS", `Select an active token to move +${points} steps forward!`, "blue");
+    const legalChoices = getPlayableBonusTokens(currentPlayer, points);
+    clearHighlighting();
+    highlightPlayableTokens(legalChoices);
+  }
+  updatePowerHubUI();
+  updateBonusPointsUI();
+}
+
+function getPlayableBonusTokens(player, pointsToUse) {
+  const list = [];
+  if (isMoving) return list;
+
+  let targetPlayer = player;
+  if (isTeamMode && checkPlayerFinish(player)) {
+    targetPlayer = getTeammate(player);
+  }
+
+  for (let i = 0; i < 4; i++) {
+    const pos = tokens[targetPlayer][i].pos;
+    if (pos > 0 && pos + pointsToUse <= 57) {
+      const targetCoord = simulateTargetCoordinates(targetPlayer, i, pos + pointsToUse);
+      if (!targetCoord) continue;
+      const isSafe = isCoordinateSafe(targetCoord[0], targetCoord[1]);
+      let wouldCapture = false;
+
+      if (!isSafe) {
+        activeOrder.forEach(opp => {
+          if (opp === player || areTeammates(player, opp)) return;
+          for (let j = 0; j < 4; j++) {
+            if (tokens[opp][j].pos > 0 && tokens[opp][j].pos < 57) {
+              const oppCoord = getTokenCoordinates(opp, j);
+              if (oppCoord[0] === targetCoord[0] && oppCoord[1] === targetCoord[1]) {
+                wouldCapture = true;
+              }
+            }
+          }
+        });
+      }
+
+      if (!wouldCapture) {
+        list.push(i);
+      }
+    }
+  }
+  return list;
+}
+
+function updatePowerHubUI() {
+  activeOrder.forEach(player => {
+    const dock = document.getElementById(`power-dock-${player}`);
+    if (dock) dock.classList.add('hidden');
+  });
+
+  const dock = document.getElementById(`power-dock-${currentPlayer}`);
+  const cosmicRow = document.getElementById(`cosmic-row-${currentPlayer}`);
+  const divider = document.getElementById(`dock-divider-${currentPlayer}`);
+  
+  if (!dock || !cosmicRow) return;
+
+  const charges = powerCharges[currentPlayer] || 0;
+  const cosmicBadge = document.getElementById(`cosmic-badge-${currentPlayer}`);
+  if (cosmicBadge) cosmicBadge.innerText = charges;
+
+  const isHuman = playerSettings[currentPlayer] === 'human';
+  const points = bonusPoints[currentPlayer] || 0;
+
+  const showCosmic = charges > 0 || activePowerSelected;
+  const showBonus = points > 0 || activeBonusSelected;
+
+  if (isHuman && (showCosmic || showBonus)) {
+    dock.classList.remove('hidden');
+  }
+
+  if (showCosmic) {
+    cosmicRow.style.display = 'flex';
+  } else {
+    cosmicRow.style.display = 'none';
+  }
+
+  if (divider) {
+    if (showCosmic && showBonus) {
+      divider.style.display = 'block';
+    } else {
+      divider.style.display = 'none';
+    }
+  }
+
+  const btnSix = document.getElementById(`btn-power-${currentPlayer}-six`);
+  const btnLeap = document.getElementById(`btn-power-${currentPlayer}-leap`);
+  const btnAegis = document.getElementById(`btn-power-${currentPlayer}-aegis`);
+
+  if (charges <= 0 && !activePowerSelected) {
+    if (btnSix) { btnSix.disabled = true; btnSix.onpointerdown = null; }
+    if (btnLeap) { btnLeap.disabled = true; btnLeap.onpointerdown = null; }
+    if (btnAegis) { btnAegis.disabled = true; btnAegis.onpointerdown = null; }
+    return;
+  }
+
   let targetPlayer = currentPlayer;
   if (isTeamMode && checkPlayerFinish(currentPlayer)) {
     targetPlayer = getTeammate(currentPlayer);
   }
 
-  if (btnSix) btnSix.disabled = diceRolled;
-  
+  if (btnSix) {
+    btnSix.disabled = diceRolled;
+    btnSix.classList.toggle('selected', activePowerSelected === 'force_six');
+    if (!btnSix.disabled) {
+      bindInstantTap(btnSix, () => activatePower('force_six'));
+    } else {
+      btnSix.onpointerdown = null;
+    }
+  }
+
   const hasActiveLeap = tokens[targetPlayer].some(t => t.pos > 0 && t.pos + 6 <= 57);
-  if (btnLeap) btnLeap.disabled = !hasActiveLeap || diceRolled;
-  
+  if (btnLeap) {
+    btnLeap.disabled = !hasActiveLeap || diceRolled;
+    btnLeap.classList.toggle('selected', activePowerSelected === 'swift_leap');
+    if (!btnLeap.disabled) {
+      bindInstantTap(btnLeap, () => activatePower('swift_leap'));
+    } else {
+      btnLeap.onpointerdown = null;
+    }
+  }
+
   let hasSafeTeleport = false;
   for (let i = 0; i < 4; i++) {
     if (getNearestSafeZonePos(targetPlayer, i) !== null) {
@@ -2040,49 +2280,182 @@ function updatePowerHubUI() {
       break;
     }
   }
-  if (btnAegis) btnAegis.disabled = !hasSafeTeleport || diceRolled;
+  if (btnAegis) {
+    btnAegis.disabled = !hasSafeTeleport || diceRolled;
+    btnAegis.classList.toggle('selected', activePowerSelected === 'aegis_teleport');
+    if (!btnAegis.disabled) {
+      bindInstantTap(btnAegis, () => activatePower('aegis_teleport'));
+    } else {
+      btnAegis.onpointerdown = null;
+    }
+  }
 }
 
-function showNotification(title, message, themeClass) {
-  const toast = document.createElement('div');
-  toast.className = `custom-toast ${themeClass}`;
-  toast.innerHTML = `<strong>${title}</strong><p>${message}</p>`;
-  document.body.appendChild(toast);
+function updateBonusPointsUI() {
+  const dock = document.getElementById(`power-dock-${currentPlayer}`);
+  const bonusRow = document.getElementById(`bonus-row-${currentPlayer}`);
+  const divider = document.getElementById(`dock-divider-${currentPlayer}`);
+  const bonusBadge = document.getElementById(`bonus-badge-${currentPlayer}`);
   
-  setTimeout(() => toast.classList.add('show'), 50);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 400);
-  }, 3500);
+  if (!dock || !bonusRow) return;
+
+  const points = bonusPoints[currentPlayer] || 0;
+  if (bonusBadge) bonusBadge.innerText = points;
+
+  const isHuman = playerSettings[currentPlayer] === 'human';
+  const charges = powerCharges[currentPlayer] || 0;
+
+  const showCosmic = charges > 0 || activePowerSelected;
+  const showBonus = points > 0 || activeBonusSelected;
+
+  if (isHuman && (showCosmic || showBonus)) {
+    dock.classList.remove('hidden');
+  }
+
+  if (showBonus) {
+    bonusRow.style.display = 'flex';
+  } else {
+    bonusRow.style.display = 'none';
+  }
+
+  if (divider) {
+    if (showCosmic && showBonus) {
+      divider.style.display = 'block';
+    } else {
+      divider.style.display = 'none';
+    }
+  }
+
+  for (let p = 1; p <= 4; p++) {
+    const btn = document.getElementById(`btn-bonus-${currentPlayer}-${p}`);
+    if (btn) {
+      const playableChoices = getPlayableBonusTokens(currentPlayer, p);
+      btn.disabled = (points < p) || isMoving || (playableChoices.length === 0);
+      btn.classList.toggle('selected', activeBonusSelected === p);
+      if (!btn.disabled) {
+        bindInstantTap(btn, () => activateBonusPoints(p));
+      } else {
+        btn.onpointerdown = null;
+      }
+    }
+  }
 }
 
-function triggerPowerUpCelebration(player, charges) {
-  playSound('powerup');
-  showNotification("⚡ COSMIC POWER EARNED!", `${PLAYER_CONFIGS[player].name} got ${charges} Power Charge(s) for consecutive captures!`, "gold");
+function executeBotBonusUsage() {
+  const pointsAvailable = bonusPoints[currentPlayer] || 0;
+  if (pointsAvailable <= 0 || isMoving || !isGameRunning) return false;
+
+  let targetPlayer = currentPlayer;
+  if (isTeamMode && checkPlayerFinish(currentPlayer)) {
+    targetPlayer = getTeammate(currentPlayer);
+  }
+
+  for (let p = pointsAvailable; p >= 1; p--) {
+    const choices = getPlayableBonusTokens(currentPlayer, p);
+    for (const idx of choices) {
+      const currentPos = tokens[targetPlayer][idx].pos;
+      if (currentPos + p === 57) {
+        activateBonusPoints(p);
+        botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, idx), 300);
+        return true;
+      }
+    }
+  }
+
+  for (let p = pointsAvailable; p >= 1; p--) {
+    const choices = getPlayableBonusTokens(currentPlayer, p);
+    for (const idx of choices) {
+      if (isTokenCurrentlyThreatened(targetPlayer, idx)) {
+        const targetPos = tokens[targetPlayer][idx].pos + p;
+        const targetCoord = simulateTargetCoordinates(targetPlayer, idx, targetPos);
+        if (isCoordinateSafe(targetCoord[0], targetCoord[1])) {
+          activateBonusPoints(p);
+          botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, idx), 300);
+          return true;
+        }
+      }
+    }
+  }
+
+  if (pointsAvailable === 4) {
+    const choices = getPlayableBonusTokens(currentPlayer, 1);
+    if (choices.length > 0) {
+      choices.sort((a, b) => tokens[targetPlayer][b].pos - tokens[targetPlayer][a].pos);
+      activateBonusPoints(1);
+      botActionTimeoutId = setTimeout(() => onTokenTapped(currentPlayer, choices[0]), 300);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /*************************************************************
- * 12. RESET CONTROLS & SYSTEM BOOTSTRAP
+ * 12. RESET CONTROLS, TOURNAMENTS & STATISTICS RESUME ENGINE
  *************************************************************/
 function openResetModal() {
   playSound('click');
   saveMatchState();
+  
+  isGameRunning = false;
+  if (botActionTimeoutId) {
+    clearTimeout(botActionTimeoutId);
+    botActionTimeoutId = null;
+  }
+  isMoving = false;
+
   document.getElementById('game-screen').classList.add('hidden');
   document.getElementById('home-screen').classList.add('hidden');
   document.getElementById('splash-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'splash' }, '');
+  
   updateSplashCta();
   renderStatsLine();
 }
 
 function endGame() {
+  const matchPlacements = [...winners];
+  activeOrder.forEach(p => {
+    if (!matchPlacements.includes(p)) matchPlacements.push(p);
+  });
+  
+  activeOrder.forEach(p => {
+    if (playerSettings[p] === 'human') {
+      const isWin = (winners[0] === p);
+      
+      updateLifetimeStats(p, isWin, currentMatchTurns, currentMatchCaptures[p], currentMatchMaxSixes[p]);
+    }
+  });
+
+  isGameRunning = false;
   clearMatchState();
-  playSound('victory'); // ম্যাচ শেষ হওয়ার সাথে সাথে রাজকীয় কর্ড বাজবে
-  recordMatchResult(isTeamMode ? winners.slice(0, 2) : [winners[0]]);
+  playSound('victory');
+
+  if (isTournamentActive) {
+    const pts = [10, 6, 4, 2];
+    matchPlacements.forEach((p, idx) => {
+      tournamentScores[p] = (tournamentScores[p] || 0) + pts[idx];
+    });
+    showTournamentSummary();
+    return;
+  }
 
   const container = document.getElementById('podium-list');
   if (!container) return;
   container.innerHTML = '';
   
+  const mainTitle = document.getElementById('podium-main-title');
+  const subTitle = document.getElementById('podium-sub-title');
+  const restartBtn = document.getElementById('podium-restart-btn');
+  
+  if (mainTitle) mainTitle.textContent = "Victory Podium";
+  if (subTitle) subTitle.textContent = "Match Completed!";
+  if (restartBtn) {
+    restartBtn.textContent = "PLAY AGAIN";
+    restartBtn.onclick = restartGame;
+  }
+
   if (isTeamMode) {
     const team1Won = winners.includes('red') || winners.includes('yellow');
     const winningTeamName = team1Won ? "RED & YELLOW (Alpha)" : "GREEN & BLUE (Beta)";
@@ -2093,20 +2466,52 @@ function endGame() {
     const winCard = document.createElement('div');
     winCard.className = "podium-item";
     winCard.style.borderColor = winningTeamColor;
-    winCard.innerHTML = `<span style="color: ${winningTeamColor}; font-weight: 900;">🏆 VICTORY</span><span style="color: white;">Team ${winningTeamName}</span>`;
+    
+    const badgeSpan = document.createElement('span');
+    badgeSpan.style.color = winningTeamColor;
+    badgeSpan.style.fontWeight = "900";
+    badgeSpan.textContent = "🏆 VICTORY";
+    
+    const winNameSpan = document.createElement('span');
+    winNameSpan.style.color = "white";
+    winNameSpan.textContent = `Team ${winningTeamName}`;
+    
+    winCard.appendChild(badgeSpan);
+    winCard.appendChild(winNameSpan);
     container.appendChild(winCard);
     
     const loseCard = document.createElement('div');
     loseCard.className = "podium-item";
     loseCard.style.borderColor = losingTeamColor;
-    loseCard.innerHTML = `<span style="color: var(--text-dim); font-weight: 700;">2nd Place</span><span style="color: var(--text-dim);">Team ${losingTeamName}</span>`;
+    
+    const loseBadgeSpan = document.createElement('span');
+    loseBadgeSpan.style.color = "var(--text-dim)";
+    loseBadgeSpan.style.fontWeight = "700";
+    loseBadgeSpan.textContent = "2nd Place";
+    
+    const loseNameSpan = document.createElement('span');
+    loseNameSpan.style.color = "var(--text-dim)";
+    loseNameSpan.textContent = `Team ${losingTeamName}`;
+    
+    loseCard.appendChild(loseBadgeSpan);
+    loseCard.appendChild(loseNameSpan);
     container.appendChild(loseCard);
   } else {
     winners.forEach((p, index) => {
       const card = document.createElement('div');
       card.className = "podium-item";
-      card.style.color = PLAYER_CONFIGS[p].color;
-      card.innerHTML = `<span>${index + 1}st Place</span><span>${PLAYER_CONFIGS[p].name} (${playerSettings[p].toUpperCase()})</span>`;
+      card.style.borderColor = PLAYER_CONFIGS[p].color;
+      
+      const placeSpan = document.createElement('span');
+      placeSpan.style.color = PLAYER_CONFIGS[p].color;
+      placeSpan.textContent = `${index + 1}st Place`;
+      
+      const nameSpan = document.createElement('span');
+      nameSpan.style.color = "white";
+      nameSpan.textContent = `${PLAYER_CONFIGS[p].name} (${playerSettings[p].toUpperCase()})`;
+      
+      card.appendChild(placeSpan);
+      card.appendChild(nameSpan);
       container.appendChild(card);
     });
     
@@ -2114,8 +2519,18 @@ function endGame() {
       if (!winners.includes(p)) {
         const card = document.createElement('div');
         card.className = "podium-item";
-        card.style.color = PLAYER_CONFIGS[p].color;
-        card.innerHTML = `<span>Runner Up</span><span>${PLAYER_CONFIGS[p].name} (${playerSettings[p].toUpperCase()})</span>`;
+        card.style.borderColor = PLAYER_CONFIGS[p].color;
+        
+        const placeSpan = document.createElement('span');
+        placeSpan.style.color = PLAYER_CONFIGS[p].color;
+        placeSpan.textContent = `Runner Up`;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.style.color = "white";
+        nameSpan.textContent = `${PLAYER_CONFIGS[p].name} (${playerSettings[p].toUpperCase()})`;
+        
+        card.appendChild(placeSpan);
+        card.appendChild(nameSpan);
         container.appendChild(card);
       }
     });
@@ -2125,52 +2540,267 @@ function endGame() {
   if (modal) modal.classList.remove('hidden');
 }
 
-function resetDiceUI() {
-  activeOrder.forEach(player => {
-    const cube = document.getElementById(`cube-${player}`);
-    if (cube) cube.style.transform = `rotateX(0deg) rotateY(0deg)`;
+/*************************************************************
+ * TOURNAMENT MODULE GRAPHICAL HANDLERS
+ *************************************************************/
+function showTournamentSummary() {
+  const titleEl = document.getElementById('tourney-round-title');
+  const subtitleEl = document.getElementById('tourney-round-subtitle');
+  const listEl = document.getElementById('tourney-summary-list');
+  const nextBtn = document.getElementById('tourney-next-btn');
+  
+  if (!titleEl || !subtitleEl || !listEl || !nextBtn) return;
+  
+  titleEl.textContent = `Tournament Standings`;
+  subtitleEl.textContent = `Round ${tournamentRound} of 3 Completed`;
+  
+  listEl.innerHTML = '';
+  
+  const sortedPlayers = [...activeOrder].sort((a, b) => {
+    if (tournamentScores[b] !== tournamentScores[a]) {
+      return tournamentScores[b] - tournamentScores[a];
+    }
+    return (currentMatchCaptures[b] || 0) - (currentMatchCaptures[a] || 0);
   });
+
+  sortedPlayers.forEach((p, idx) => {
+    const card = document.createElement('div');
+    card.className = 'podium-item';
+    card.style.borderColor = PLAYER_CONFIGS[p].color;
+    
+    const playerSpan = document.createElement('span');
+    playerSpan.style.color = PLAYER_CONFIGS[p].color;
+    playerSpan.textContent = `#${idx + 1} ${PLAYER_CONFIGS[p].name}`;
+    
+    const scoreSpan = document.createElement('span');
+    scoreSpan.style.color = "white";
+    scoreSpan.style.fontWeight = "900";
+    scoreSpan.textContent = `${tournamentScores[p]} Points`;
+    
+    card.appendChild(playerSpan);
+    card.appendChild(scoreSpan);
+    listEl.appendChild(card);
+  });
+
+  if (tournamentRound < 3) {
+    nextBtn.textContent = `START MATCH ${tournamentRound + 1}`;
+    nextBtn.onclick = () => {
+      tournamentRound++;
+      document.getElementById('tournament-summary-modal').classList.add('hidden');
+      restartGame();
+    };
+  } else {
+    nextBtn.textContent = `VIEW FINAL PODIUM`;
+    nextBtn.onclick = showGrandTournamentPodium;
+  }
+
+  document.getElementById('tournament-summary-modal').classList.remove('hidden');
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function showGrandTournamentPodium() {
+  const summaryModal = document.getElementById('tournament-summary-modal');
+  if (summaryModal) summaryModal.classList.add('hidden');
+  
+  const container = document.getElementById('podium-list');
+  const mainTitle = document.getElementById('podium-main-title');
+  const subTitle = document.getElementById('podium-sub-title');
+  const restartBtn = document.getElementById('podium-restart-btn');
+  
+  if (!container || !mainTitle || !subTitle || !restartBtn) return;
+  
+  container.innerHTML = '';
+  mainTitle.textContent = "Tournament Championship";
+  subTitle.textContent = "Grand Finals Standings!";
+  
+  const sortedPlayers = [...activeOrder].sort((a, b) => {
+    if (tournamentScores[b] !== tournamentScores[a]) {
+      return tournamentScores[b] - tournamentScores[a];
+    }
+    return (currentMatchCaptures[b] || 0) - (currentMatchCaptures[a] || 0);
+  });
+
+  const medals = ["🏆 Champion", "🥈 2nd Place", "🥉 3rd Place", "Fourth"];
+  sortedPlayers.forEach((p, index) => {
+    const card = document.createElement('div');
+    card.className = "podium-item";
+    card.style.borderColor = PLAYER_CONFIGS[p].color;
+    
+    const medalSpan = document.createElement('span');
+    medalSpan.style.color = PLAYER_CONFIGS[p].color;
+    medalSpan.style.fontWeight = "900";
+    medalSpan.textContent = medals[index] || `${index + 1}th Place`;
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.style.color = "white";
+    nameSpan.textContent = `${PLAYER_CONFIGS[p].name} (${tournamentScores[p]} Pts)`;
+    
+    card.appendChild(medalSpan);
+    card.appendChild(nameSpan);
+    container.appendChild(card);
+  });
+
+  restartBtn.textContent = "FINISH TOURNAMENT";
+  restartBtn.onclick = () => {
+    isTournamentActive = false;
+    const podiumModal = document.getElementById('podium-modal');
+    if (podiumModal) podiumModal.classList.add('hidden');
+    openResetModal();
+  };
+
+  const podiumModal = document.getElementById('podium-modal');
+  if (podiumModal) podiumModal.classList.remove('hidden');
 }
 
 /*************************************************************
- * 13. HOME SCREEN ENHANCEMENTS (Persistence, Theme, Utilities)
+ * 13. STATS PERSISTENCE, BADGES & SETTINGS MODALS CONTROL
  *************************************************************/
+function getDefaultStats() {
+  return {
+    matchesPlayed: 0,
+    matchesWon: 0,
+    matchesLost: 0,
+    colorPlays: { red: 0, green: 0, yellow: 0, blue: 0 },
+    fastestWin: null,
+    capturesTotal: 0,
+    wins: { red: 0, green: 0, yellow: 0, blue: 0 },
+    badges: []
+  };
+}
+
 function loadStats() {
   try {
-    return JSON.parse(localStorage.getItem('ludoRoyale_stats')) ||
-      { matchesPlayed: 0, wins: { red: 0, green: 0, yellow: 0, blue: 0 } };
+    const saved = localStorage.getItem('ludoRoyale_stats');
+    return saved ? JSON.parse(saved) : getDefaultStats();
   } catch (e) {
-    return { matchesPlayed: 0, wins: { red: 0, green: 0, yellow: 0, blue: 0 } };
+    return getDefaultStats();
   }
 }
 
-function recordMatchResult(winnerList) {
+function updateLifetimeStats(playerColor, isWin, turnsCount, capturesCount, consecutiveSixesCount) {
   const stats = loadStats();
-  stats.matchesPlayed++;
-  winnerList.forEach(p => { if (p && stats.wins[p] !== undefined) stats.wins[p]++; });
+  stats.matchesPlayed = (stats.matchesPlayed || 0) + 1;
+  
+  if (!stats.colorPlays) stats.colorPlays = { red: 0, green: 0, yellow: 0, blue: 0 };
+  stats.colorPlays[playerColor] = (stats.colorPlays[playerColor] || 0) + 1;
+  
+  if (!stats.wins) stats.wins = { red: 0, green: 0, yellow: 0, blue: 0 };
+
+  if (isWin) {
+    stats.matchesWon = (stats.matchesWon || 0) + 1;
+    stats.wins[playerColor] = (stats.wins[playerColor] || 0) + 1;
+    if (turnsCount > 0) {
+      if (!stats.fastestWin || turnsCount < stats.fastestWin) {
+        stats.fastestWin = turnsCount;
+      }
+    }
+  } else {
+    stats.matchesLost = (stats.matchesLost || 0) + 1;
+  }
+
+  stats.capturesTotal = (stats.capturesTotal || 0) + capturesCount;
+
+  if (!stats.badges) stats.badges = [];
+  
+  if (capturesCount > 0 && !stats.badges.includes('first_blood')) {
+    stats.badges.push('first_blood');
+  }
+  if (consecutiveSixesCount >= 3 && !stats.badges.includes('six_machine')) {
+    stats.badges.push('six_machine');
+  }
+  if (capturesCount >= 5 && !stats.badges.includes('ruthless')) {
+    stats.badges.push('ruthless');
+  }
+
   localStorage.setItem('ludoRoyale_stats', JSON.stringify(stats));
 }
 
-function renderStatsLine() {
-  const el = document.getElementById('splash-stats-line');
-  if (!el) return;
+function openStatsModal() {
+  playSound('click');
   const stats = loadStats();
-  el.textContent = stats.matchesPlayed > 0 ? `🏆 ${stats.matchesPlayed} matches played` : '';
+  
+  document.getElementById('stat-total-matches').innerText = stats.matchesPlayed || 0;
+  document.getElementById('stat-won-matches').innerText = stats.matchesWon || 0;
+  
+  const winRate = stats.matchesPlayed > 0 ? Math.round((stats.matchesWon / stats.matchesPlayed) * 100) : 0;
+  document.getElementById('stat-win-rate').innerText = `${winRate}%`;
+
+  let favColor = 'N/A';
+  let maxPlayCount = 0;
+  if (stats.colorPlays) {
+    Object.keys(stats.colorPlays).forEach(col => {
+      if (stats.colorPlays[col] > maxPlayCount) {
+        maxPlayCount = stats.colorPlays[col];
+        favColor = col.toUpperCase();
+      }
+    });
+  }
+  document.getElementById('stat-fav-color').innerText = favColor;
+  document.getElementById('stat-fastest-win').innerText = stats.fastestWin ? `${stats.fastestWin} steps` : 'N/A';
+
+  const badgesContainer = document.getElementById('stat-badges-container');
+  badgesContainer.innerHTML = '';
+  
+  const badgeMeta = {
+    first_blood: { emoji: "🩸", title: "First Blood", desc: "First capture" },
+    six_machine: { emoji: "🎲", title: "Six Machine", desc: "3 consecutive 6s" },
+    ruthless: { emoji: "💀", title: "Ruthless", desc: "5+ captures in a match" }
+  };
+
+  if (stats.badges && stats.badges.length > 0) {
+    stats.badges.forEach(badgeKey => {
+      const meta = badgeMeta[badgeKey];
+      if (meta) {
+        const span = document.createElement('span');
+        span.className = 'badge-pill';
+        
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `${meta.emoji} ${meta.title}`;
+        
+        span.appendChild(textSpan);
+        span.title = meta.desc;
+        badgesContainer.appendChild(span);
+      }
+    });
+  } else {
+    const defaultSpan = document.createElement('span');
+    defaultSpan.style.color = "var(--text-dim)";
+    defaultSpan.style.fontSize = "0.72rem";
+    defaultSpan.style.fontStyle = "italic";
+    defaultSpan.textContent = "No badges earned yet. Play matches to earn badges!";
+    badgesContainer.appendChild(defaultSpan);
+  }
+
+  document.getElementById('stats-modal').classList.remove('hidden');
+}
+
+function closeStatsModal() {
+  playSound('click');
+  document.getElementById('stats-modal').classList.add('hidden');
+}
+
+function openSettingsModalOverlay() {
+  playSound('click');
+  document.getElementById('settings-modal-overlay').classList.remove('hidden');
+}
+
+function closeSettingsModalOverlay() {
+  playSound('click');
+  document.getElementById('settings-modal-overlay').classList.add('hidden');
 }
 
 function saveMatchState() {
   if (!activeOrder.length) return;
   const state = {
     playerSettings, isTeamMode, activeOrder, currentTurnIndex, currentPlayer,
-    tokens, captureCounts, powerCharges, winners, consecutiveSixes
+    tokens, captureCounts, powerCharges, bonusPoints, winners, consecutiveSixes,
+    isTournamentActive, tournamentRound, tournamentScores, tournamentPlacements,
+    currentMatchTurns, currentMatchCaptures, currentMatchMaxSixes, botDifficulty
   };
   try {
     localStorage.setItem('ludoRoyale_matchState', JSON.stringify(state));
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Match state could not be auto-saved:", e);
+  }
 }
 
 function clearMatchState() {
@@ -2196,13 +2826,39 @@ function resumeMatch() {
   Object.keys(state.tokens).forEach(p => tokens[p] = state.tokens[p]);
   Object.assign(captureCounts, state.captureCounts);
   Object.assign(powerCharges, state.powerCharges);
+  
+  if (state.bonusPoints) {
+    Object.assign(bonusPoints, state.bonusPoints);
+  }
+  
   winners.length = 0;
   winners.push(...state.winners);
   consecutiveSixes = state.consecutiveSixes || 0;
+  
+  isTournamentActive = !!state.isTournamentActive;
+  tournamentRound = state.tournamentRound || 1;
+  Object.assign(tournamentScores, state.tournamentScores || {});
+  tournamentPlacements = state.tournamentPlacements || [];
+  currentMatchTurns = state.currentMatchTurns || 0;
+  Object.assign(currentMatchCaptures, state.currentMatchCaptures || {});
+  Object.assign(currentMatchMaxSixes, state.currentMatchMaxSixes || {});
+  
+  if (state.botDifficulty) {
+    setBotDifficulty(state.botDifficulty);
+  }
+
+  isGameRunning = true;
+  isMoving = false;
+  if (botActionTimeoutId) {
+    clearTimeout(botActionTimeoutId);
+    botActionTimeoutId = null;
+  }
 
   document.getElementById('splash-screen').classList.add('hidden');
   document.getElementById('home-screen').classList.add('hidden');
   document.getElementById('game-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'game' }, '');
 
   document.querySelectorAll('.yard').forEach(yard => yard.style.opacity = '0.08');
   activeOrder.forEach(player => {
@@ -2210,7 +2866,13 @@ function resumeMatch() {
     if (y) y.style.opacity = '1';
   });
   const badge = document.getElementById('team-status-indicator');
-  if (badge) badge.innerText = isTeamMode ? "TEAM MATCH (Red+Yellow vs Green+Blue)" : "SOLO MATCH";
+  if (badge) {
+    if (isTournamentActive) {
+      badge.innerText = `🏆 TOURNAMENT (Round ${tournamentRound}/3)`;
+    } else {
+      badge.innerText = isTeamMode ? "TEAM MATCH (Red+Yellow vs Green+Blue)" : "SOLO MATCH";
+    }
+  }
 
   generateGridCells();
   generateTokenElements();
@@ -2222,7 +2884,9 @@ function resumeMatch() {
 function saveLastConfig() {
   try {
     localStorage.setItem('ludoRoyale_lastConfig', JSON.stringify({ playerSettings, isTeamMode }));
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Last configuration could not be saved:", e);
+  }
 }
 
 function hasLastConfig() {
@@ -2245,8 +2909,12 @@ function quickPlay() {
   if (playerSettings.yellow !== 'off') activeOrder.push('yellow');
   if (playerSettings.blue !== 'off') activeOrder.push('blue');
 
+  isTournamentActive = false;
   document.getElementById('splash-screen').classList.add('hidden');
   document.getElementById('game-screen').classList.remove('hidden');
+  
+  history.pushState({ screen: 'game' }, '');
+  
   restartGame();
 }
 
@@ -2293,7 +2961,9 @@ function previewVibeToggle() {
 }
 
 function applyTheme(theme) {
-  document.body.classList.toggle('light-theme', theme === 'light');
+  if (document.body) {
+    document.body.classList.toggle('light-theme', theme === 'light');
+  }
   const icon = document.getElementById('theme-toggle-icon');
   if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙';
 }
@@ -2325,15 +2995,24 @@ document.addEventListener('fullscreenchange', () => {
 
 /*************************************************************
  * 14. HOTSPOT MULTIPLAYER (WebSocket)
- *************************************************************/
+ * *************************************************************/
 let mpSocket = null;
 let mpIsHost = false;
 let mpIsActive = false;
+let mpActionPending = false;
 
 function mpConnect() {
   playSound('click');
   const statusEl = document.getElementById('mp-status-text');
   const wsUrl = `ws://${location.hostname}:3000`;
+
+  if (mpSocket) {
+    try {
+      mpSocket.close();
+    } catch (e) {
+      console.warn("Previous socket connection could not be closed gracefully:", e);
+    }
+  }
 
   mpSocket = new WebSocket(wsUrl);
   mpIsActive = true;
@@ -2374,19 +3053,18 @@ function mpConnect() {
   };
 }
 
-// Host: প্রতি turn/move এর পর পুরো board state broadcast করবে
 function mpBroadcastState() {
   if (!mpIsActive || !mpIsHost || !mpSocket || mpSocket.readyState !== 1) return;
   mpSocket.send(JSON.stringify({
     type: 'state_sync',
     state: {
       tokens, currentPlayer, currentTurnIndex, diceValue, diceRolled,
-      activeOrder, winners, captureCounts, isTeamMode
+      activeOrder, winners, captureCounts, isTeamMode,
+      bonusPoints, powerCharges
     }
   }));
 }
 
-// Client: Host থেকে আসা state দিয়ে নিজের বোর্ড আপডেট করবে
 function applyRemoteState(state) {
   Object.keys(state.tokens).forEach(p => tokens[p] = state.tokens[p]);
   currentPlayer = state.currentPlayer;
@@ -2396,6 +3074,16 @@ function applyRemoteState(state) {
   activeOrder = state.activeOrder;
   isTeamMode = state.isTeamMode;
   Object.assign(captureCounts, state.captureCounts);
+  
+  if (state.bonusPoints) {
+    Object.assign(bonusPoints, state.bonusPoints);
+  }
+  
+  if (state.powerCharges) {
+    Object.assign(powerCharges, state.powerCharges);
+  }
+
+  mpActionPending = false;
 
   if (document.getElementById('game-screen').classList.contains('hidden')) {
     document.getElementById('home-screen').classList.add('hidden');
@@ -2407,31 +3095,103 @@ function applyRemoteState(state) {
   setTurnState(currentPlayer);
 }
 
-// Client: নিজের turn-এ dice/token চাপলে Host-কে জানাবে, নিজে হিসাব করবে না
 function mpSendAction(type, payload) {
-  if (!mpIsActive || mpIsHost || !mpSocket || mpSocket.readyState !== 1) return false;
+  if (!mpIsActive || mpIsHost || !mpSocket || mpSocket.readyState !== 1 || mpActionPending) return false;
+  
+  mpActionPending = true;
+  
   mpSocket.send(JSON.stringify({ type: 'action', action: { type, payload } }));
   return true;
 }
 
-// Host: Client থেকে আসা action পেয়ে আসল গেম-লজিক চালাবে
 function handleRemoteAction(action) {
   if (action.type === 'dice') {
     onDiceTriggered(action.payload.player);
   } else if (action.type === 'token') {
     onTokenTapped(action.payload.player, action.payload.idx);
+  } else if (action.type === 'activate_bonus') {
+    activateBonusPoints(action.payload.points);
   }
 }
 
-// System Bootstrapping
+// Global Notification Toast
+function showNotification(title, message, theme) {
+  const t = document.createElement('div');
+  t.className = `custom-toast show ${theme}`;
+  
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  
+  const p = document.createElement('p');
+  p.textContent = message;
+  
+  t.appendChild(strong);
+  t.appendChild(p);
+  
+  document.body.appendChild(t);
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 400);
+  }, 2200);
+}
+
+function resetDiceUI() {
+  activeOrder.forEach(player => {
+    const cube = document.getElementById(`cube-${player}`);
+    if (cube) cube.style.transform = `rotateX(0deg) rotateY(0deg)`;
+  });
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/*************************************************************
+ * 15. ANDROID HARDWARE BACK BUTTON / HISTORY CONTROLLER
+ * *************************************************************/
+window.addEventListener('popstate', function(e) {
+  const state = e.state;
+  
+  if (!state || state.screen === 'splash') {
+    document.getElementById('splash-screen').classList.remove('hidden');
+    document.getElementById('home-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.add('hidden');
+    
+    isGameRunning = false;
+    if (botActionTimeoutId) {
+      clearTimeout(botActionTimeoutId);
+      botActionTimeoutId = null;
+    }
+    isMoving = false;
+    updateSplashCta();
+    renderStatsLine();
+  } 
+  else if (state.screen === 'lobby') {
+    document.getElementById('splash-screen').classList.add('hidden');
+    document.getElementById('home-screen').classList.remove('hidden');
+    document.getElementById('game-screen').classList.add('hidden');
+    
+    isGameRunning = false;
+    if (botActionTimeoutId) {
+      clearTimeout(botActionTimeoutId);
+      botActionTimeoutId = null;
+    }
+    isMoving = false;
+  } 
+  else if (state.screen === 'game') {
+    document.getElementById('splash-screen').classList.add('hidden');
+    document.getElementById('home-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+  }
+});
+
+// System Bootstraps
 validateLobbySettings();
 generateGridCells();
 loadTheme();
 updateSplashCta();
 renderStatsLine();
-/*************************************************************
- * SERVICE WORKER REGISTRATION (PWA)
- *************************************************************/
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
